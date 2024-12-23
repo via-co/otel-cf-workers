@@ -13,6 +13,7 @@ import { createScheduledHandler } from './instrumentation/scheduled.js'
 //@ts-ignore
 import * as versions from '../versions.json'
 import { createEmailHandler } from './instrumentation/email.js'
+import { createPageHandler } from './instrumentation/page.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -86,6 +87,18 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 			return conf
 		}
 	}
+}
+
+export function instrumentPage<
+	E = unknown,
+	P extends string = any,
+	D extends Record<string, unknown> = Record<string, unknown>,
+>(handler: PagesFunction<E, P, D>, config: ConfigurationOption): PagesFunction<E, P, D> {
+	const initialiser = createInitialiser(config)
+
+	handler = createPageHandler(handler, initialiser)
+
+	return handler
 }
 
 export function instrument<E, Q, C>(

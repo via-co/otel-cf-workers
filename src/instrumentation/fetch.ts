@@ -108,7 +108,7 @@ export function getParentContextFromHeaders(headers: Headers): Context {
 	})
 }
 
-function getParentContextFromRequest(request: Request) {
+export function getParentContextFromRequest(request: Request) {
 	const workerConfig = getActiveConfig()
 
 	if (workerConfig === undefined) {

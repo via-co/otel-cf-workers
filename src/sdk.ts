@@ -21,6 +21,7 @@ import { emailInstrumentation } from './instrumentation/email.js'
 import * as versions from '../versions.json'
 //@ts-ignore
 import { env } from 'cloudflare:workers'
+import { createPageHandler } from './instrumentation/page.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -112,6 +113,18 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 			return conf
 		}
 	}
+}
+
+export function instrumentPage<
+	E = unknown,
+	P extends string = any,
+	D extends Record<string, unknown> = Record<string, unknown>,
+>(handler: PagesFunction<E, P, D>, config: ConfigurationOption): PagesFunction<E, P, D> {
+	const initialiser = createInitialiser(config)
+
+	handler = createPageHandler(handler, initialiser)
+
+	return handler
 }
 
 export async function exportSpans(traceId: string, tracker?: PromiseTracker) {

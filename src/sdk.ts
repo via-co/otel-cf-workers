@@ -21,7 +21,7 @@ import { emailInstrumentation } from './instrumentation/email.js'
 import * as versions from '../versions.json'
 //@ts-ignore
 import { env } from 'cloudflare:workers'
-import { createPageHandler } from './instrumentation/page.js'
+import { createPageHandler, ExportedSvelteEventHandler } from './instrumentation/page.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -113,18 +113,6 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 			return conf
 		}
 	}
-}
-
-export function instrumentPage<
-	E = unknown,
-	P extends string = any,
-	D extends Record<string, unknown> = Record<string, unknown>,
->(handler: PagesFunction<E, P, D>, config: ConfigurationOption): PagesFunction<E, P, D> {
-	const initialiser = createInitialiser(config)
-
-	handler = createPageHandler(handler, initialiser)
-
-	return handler
 }
 
 export async function exportSpans(traceId: string, tracker?: PromiseTracker) {
@@ -240,6 +228,15 @@ export function instrumentDO(doClass: DOClass, config: ConfigurationOption) {
 	const initialiser = createInitialiser(config)
 
 	return instrumentDOClass(doClass, initialiser)
+}
+
+export function instrumentPage(
+	eventHandler: ExportedSvelteEventHandler,
+	config: ConfigurationOption,
+): ExportedSvelteEventHandler {
+	const initialiser = createInitialiser(config)
+	eventHandler = createPageHandler(eventHandler, initialiser)
+	return eventHandler
 }
 
 export const __unwrappedFetch = unwrap(fetch)

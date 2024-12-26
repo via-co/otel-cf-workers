@@ -49,7 +49,7 @@ export function proxyExecutionContext(context: ExecutionContext): ContextAndTrac
 export async function exportSpans(tracker?: PromiseTracker) {
 	const tracer = trace.getTracer('export')
 	if (tracer instanceof WorkerTracer) {
-		await scheduler.wait(1)
+		// await scheduler.wait(1)
 		if (tracker) {
 			await tracker.wait()
 		}

@@ -914,7 +914,6 @@ function proxyExecutionContext(context3) {
 async function exportSpans(tracker) {
   const tracer2 = import_api8.trace.getTracer("export");
   if (tracer2 instanceof WorkerTracer) {
-    await scheduler.wait(1);
     if (tracker) {
       await tracker.wait();
     }
@@ -2070,10 +2069,16 @@ function instrumentClientFetch(fetchFn, configFn, attrs) {
         }
         span.setAttributes(gatherRequestAttributes(request));
         if (request.cf) span.setAttributes(gatherOutgoingCfAttributes(request.cf));
-        const response = await Reflect.apply(target, thisArg, [request]);
-        span.setAttributes(gatherResponseAttributes(response));
-        span.end();
-        return response;
+        try {
+          const response = await Reflect.apply(target, thisArg, [request]);
+          span.setAttributes(gatherResponseAttributes(response));
+          return response;
+        } catch (err) {
+          span?.setStatus({ code: import_api15.SpanStatusCode.ERROR });
+          throw err;
+        } finally {
+          span.end();
+        }
       });
       return promise;
     }
@@ -2268,43 +2273,46 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
 // src/instrumentation/page.ts
 var import_api19 = require("@opentelemetry/api");
 var cold_start4 = true;
-function executePageHandler(pagesFn, [request]) {
-  const spanContext = getParentContextFromRequest(request.request);
+function executePageHandler(pagesFn, [input]) {
+  const { event } = input;
+  const spanContext = getParentContextFromRequest(event.request);
   const tracer2 = import_api19.trace.getTracer("pagesHandler");
   const attributes = {
     ["faas.trigger"]: "http",
     ["faas.coldstart"]: cold_start4,
-    ["faas.invocation_id"]: request.request.headers.get("cf-ray") ?? void 0
+    ["faas.invocation_id"]: event.request.headers.get("cf-ray") ?? void 0
   };
   cold_start4 = false;
-  Object.assign(attributes, gatherRequestAttributes(request.request));
-  Object.assign(attributes, gatherIncomingCfAttributes(request.request));
+  Object.assign(attributes, gatherRequestAttributes(event.request));
+  Object.assign(attributes, gatherIncomingCfAttributes(event.request));
   const options = {
     attributes,
     kind: import_api19.SpanKind.SERVER
   };
   const promise = tracer2.startActiveSpan(
-    `${request.request.method} ${request.functionPath}`,
+    `${event.request.method} ${event.url.pathname}`,
     options,
     spanContext,
     async (span) => {
       const readable = span;
+      const method = event.request.method.toUpperCase();
       try {
-        const response = await pagesFn(request);
+        const response = await pagesFn(input);
         span.setAttributes(gatherResponseAttributes(response));
         if (readable.attributes["http.route"]) {
-          span.updateName(`${request.request.method} ${readable.attributes["http.route"]}`);
+          span.updateName(`${event.request.method} ${readable.attributes["http.route"]}`);
         }
         span.end();
         return response;
       } catch (error) {
-        if (readable.attributes["http.route"]) {
-          span.updateName(`${request.request.method} ${readable.attributes["http.route"]}`);
-        }
         span.recordException(error);
         span.setStatus({ code: import_api19.SpanStatusCode.ERROR });
-        span.end();
         throw error;
+      } finally {
+        if (readable.attributes["http.route"]) {
+          span.updateName(`fetchHandler ${method} ${readable.attributes["http.route"]}`);
+        }
+        span.end();
       }
     }
   );
@@ -2313,17 +2321,22 @@ function executePageHandler(pagesFn, [request]) {
 function createPageHandler(pageFn, initialiser) {
   const pagesHandler = {
     apply: async (target, _thisArg, argArray) => {
-      const [orig_ctx] = argArray;
-      const config = initialiser(orig_ctx.env, orig_ctx.request);
-      const { ctx, tracker } = proxyExecutionContext(orig_ctx);
-      const context3 = setConfig(config);
+      const [input] = argArray;
+      const { event } = input;
+      let { env, context: context3 } = event.platform;
+      const config = initialiser(env, event.request);
+      const configContext = setConfig(config);
+      event.locals.env = instrumentEnv(env);
+      event.fetch = instrumentClientFetch(event.fetch, (config2) => config2.fetch);
+      const { ctx, tracker } = proxyExecutionContext(context3);
+      event.locals.ctx = ctx;
       try {
-        const args = [ctx];
-        return await import_api19.context.with(context3, executePageHandler, void 0, target, args);
+        const args = [input];
+        return await import_api19.context.with(configContext, executePageHandler, void 0, target, args);
       } catch (error) {
         throw error;
       } finally {
-        orig_ctx.waitUntil(exportSpans(tracker));
+        context3.waitUntil(exportSpans(tracker));
       }
     }
   };
@@ -2390,10 +2403,10 @@ function createInitialiser(config) {
     };
   }
 }
-function instrumentPage(handler, config) {
+function instrumentPage(eventHandler, config) {
   const initialiser = createInitialiser(config);
-  handler = createPageHandler(handler, initialiser);
-  return handler;
+  eventHandler = createPageHandler(eventHandler, initialiser);
+  return eventHandler;
 }
 function instrument(handler, config) {
   const initialiser = createInitialiser(config);
@@ -2402,8 +2415,8 @@ function instrument(handler, config) {
     handler.fetch = createFetchHandler(fetcher, initialiser);
   }
   if (handler.scheduled) {
-    const scheduler2 = unwrap(handler.scheduled);
-    handler.scheduled = createScheduledHandler(scheduler2, initialiser);
+    const scheduler = unwrap(handler.scheduled);
+    handler.scheduled = createScheduledHandler(scheduler, initialiser);
   }
   if (handler.queue) {
     const queuer = unwrap(handler.queue);

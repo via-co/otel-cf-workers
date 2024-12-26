@@ -233,10 +233,16 @@ export function instrumentClientFetch(
 				}
 				span.setAttributes(gatherRequestAttributes(request))
 				if (request.cf) span.setAttributes(gatherOutgoingCfAttributes(request.cf))
-				const response = await Reflect.apply(target, thisArg, [request])
-				span.setAttributes(gatherResponseAttributes(response))
-				span.end()
-				return response
+				try {
+					const response = await Reflect.apply(target, thisArg, [request])
+					span.setAttributes(gatherResponseAttributes(response))
+					return response
+				} catch (err) {
+					span?.setStatus({ code: SpanStatusCode.ERROR })
+					throw err
+				} finally {
+					span.end()
+				}
 			})
 			return promise
 		},

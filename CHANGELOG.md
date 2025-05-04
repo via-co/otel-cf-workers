@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.50
+
+### Patch Changes
+
+- Add support for CF Pages and Workers Entrypoint
+
 ## 1.0.0-rc.52
 
 ### Minor Changes

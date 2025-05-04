@@ -22,6 +22,7 @@ import * as versions from '../versions.json'
 //@ts-ignore
 import { env } from 'cloudflare:workers'
 import { createPageHandler, ExportedSvelteEventHandler } from './instrumentation/page.js'
+import { createEntrypointHandler } from './instrumentation/entrypoint.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -34,6 +35,8 @@ type HandlerFn<T extends Trigger, E extends Env, R extends any> = (
 	env: E,
 	ctx: ExecutionContext,
 ) => R | Promise<R>
+
+export { InstrumentedEntrypoint } from './instrumentation/entrypoint.js'
 
 export function isRequest(trigger: Trigger): trigger is Request {
 	return trigger instanceof Request
@@ -113,6 +116,11 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 			return conf
 		}
 	}
+}
+
+export function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator {
+	const initialiser = createInitialiser(config)
+	return createEntrypointHandler(initialiser)
 }
 
 export async function exportSpans(traceId: string, tracker?: PromiseTracker) {

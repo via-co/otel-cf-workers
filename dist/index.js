@@ -21,6 +21,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   BatchTraceSpanProcessor: () => BatchTraceSpanProcessor,
+  InstrumentedEntrypoint: () => InstrumentedEntrypoint,
   MultiSpanExporter: () => MultiSpanExporter,
   MultiSpanExporterAsync: () => MultiSpanExporterAsync,
   OTLPExporter: () => OTLPExporter,
@@ -29,6 +30,7 @@ __export(index_exports, {
   createSampler: () => createSampler,
   instrument: () => instrument,
   instrumentDO: () => instrumentDO,
+  instrumentEntrypoint: () => instrumentEntrypoint,
   instrumentPage: () => instrumentPage,
   isAlarm: () => isAlarm,
   isHeadSampled: () => isHeadSampled,
@@ -75,7 +77,7 @@ function createSampler(conf) {
 }
 
 // src/sdk.ts
-var import_api20 = require("@opentelemetry/api");
+var import_api21 = require("@opentelemetry/api");
 var import_resources = require("@opentelemetry/resources");
 
 // src/config.ts
@@ -2216,8 +2218,8 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-rc.49";
-var node = "18.18.2";
+var _microlabs_otel_cf_workers = "1.0.0-fp.50";
+var node = "20.19.0";
 
 // src/instrumentation/email.ts
 var import_api18 = require("@opentelemetry/api");
@@ -2343,6 +2345,81 @@ function createPageHandler(pageFn, initialiser) {
   return wrap(pageFn, pagesHandler);
 }
 
+// src/instrumentation/entrypoint.ts
+var import_api20 = require("@opentelemetry/api");
+var import_semantic_conventions9 = require("@opentelemetry/semantic-conventions");
+var import_cloudflare_workers = require("cloudflare:workers");
+var traceIdSymbol3 = Symbol("traceId");
+var InstrumentedEntrypoint = class extends import_cloudflare_workers.WorkerEntrypoint {
+  enhancedEnv;
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.enhancedEnv = {};
+  }
+  set instrumentedEnv(env) {
+    this.enhancedEnv = env;
+  }
+  entrypointContext() {
+    return {
+      env: this.enhancedEnv,
+      fetch: this.fetch
+    };
+  }
+};
+function createEntrypointHandler(initialiser) {
+  const decorator = (target, propertyKey, descriptor) => {
+    const original = descriptor.value;
+    descriptor.value = async function(...args) {
+      const originalRef = this;
+      const orig_env = originalRef.env;
+      const orig_ctx = originalRef.ctx;
+      const config = initialiser(orig_env, this);
+      const env = instrumentEnv(orig_env);
+      originalRef.fetch = instrumentClientFetch(originalRef.fetch, (config2) => config2.fetch);
+      const { tracker } = proxyExecutionContext(orig_ctx);
+      const context3 = setConfig(config);
+      try {
+        originalRef.instrumentedEnv = env;
+        const executeEntrypointHandler = () => {
+          const tracer2 = import_api20.trace.getTracer("queueHandler");
+          const options = {
+            attributes: {
+              [import_semantic_conventions9.SemanticAttributes.FAAS_TRIGGER]: "rpc",
+              "rpc.function.name": propertyKey
+            },
+            kind: import_api20.SpanKind.SERVER
+          };
+          const promise = tracer2.startActiveSpan(
+            `RPC ${target.constructor.name}.${propertyKey}`,
+            options,
+            async (span) => {
+              const traceId = span.spanContext().traceId;
+              import_api20.context.active().setValue(traceIdSymbol3, traceId);
+              try {
+                const result = await original.apply(originalRef, args);
+                span.end();
+                return result;
+              } catch (error) {
+                span.recordException(error);
+                span.end();
+                throw error;
+              }
+            }
+          );
+          return promise;
+        };
+        return await import_api20.context.with(context3, executeEntrypointHandler);
+      } catch (error) {
+        throw error;
+      } finally {
+        orig_ctx.waitUntil(exportSpans(tracker));
+      }
+    };
+    return descriptor;
+  };
+  return decorator;
+}
+
 // src/sdk.ts
 function isRequest(trigger) {
   return trigger instanceof Request;
@@ -2381,7 +2458,7 @@ function init(config) {
     if (config.instrumentation.instrumentGlobalFetch) {
       instrumentGlobalFetch();
     }
-    import_api20.propagation.setGlobalPropagator(config.propagator);
+    import_api21.propagation.setGlobalPropagator(config.propagator);
     const resource = createResource(config);
     const provider = new WorkerTracerProvider(config.spanProcessors, resource);
     provider.register();
@@ -2402,6 +2479,10 @@ function createInitialiser(config) {
       return conf;
     };
   }
+}
+function instrumentEntrypoint(config) {
+  const initialiser = createInitialiser(config);
+  return createEntrypointHandler(initialiser);
 }
 function instrumentPage(eventHandler, config) {
   const initialiser = createInitialiser(config);
@@ -2479,6 +2560,7 @@ var MultiSpanExporterAsync = class {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   BatchTraceSpanProcessor,
+  InstrumentedEntrypoint,
   MultiSpanExporter,
   MultiSpanExporterAsync,
   OTLPExporter,
@@ -2487,6 +2569,7 @@ var MultiSpanExporterAsync = class {
   createSampler,
   instrument,
   instrumentDO,
+  instrumentEntrypoint,
   instrumentPage,
   isAlarm,
   isHeadSampled,

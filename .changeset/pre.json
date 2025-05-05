@@ -1,8 +1,8 @@
 {
   "mode": "pre",
-  "tag": "rc",
+  "tag": "fp",
   "initialVersions": {
-    "@microlabs/otel-cf-workers": "1.0.0-rc.9"
+    "@microlabs/otel-cf-workers": "1.0.0-rc.49"
   },
   "changesets": [
     "big-news-lick",
@@ -44,6 +44,7 @@
     "pretty-cameras-grin",
     "pretty-coins-promise",
     "proud-bugs-teach",
+    "real-seahorses-look",
     "rotten-radios-hope",
     "rude-bottles-jog",
     "silent-flies-sell",

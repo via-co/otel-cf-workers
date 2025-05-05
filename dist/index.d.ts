@@ -4,6 +4,7 @@ import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base';
 import { ExportResult, InstrumentationLibrary } from '@opentelemetry/core';
 import * as cookie from 'cookie';
 import { IResource } from '@opentelemetry/resources';
+import { WorkerEntrypoint } from 'cloudflare:workers';
 
 interface OTLPExporterConfig {
     url: string;
@@ -87,7 +88,7 @@ interface DOConstructorTrigger {
     id: string;
     name?: string;
 }
-type Trigger = Request | MessageBatch | ScheduledController | DOConstructorTrigger | 'do-alarm' | ForwardableEmailMessage;
+type Trigger = Request | MessageBatch | ScheduledController | DOConstructorTrigger | 'do-alarm' | ForwardableEmailMessage | PropertyDescriptor;
 
 interface LocalTrace {
     readonly traceId: string;
@@ -281,11 +282,20 @@ type ExportedSvelteEventHandler = (input: {
     resolve(event: RequestEvent, opts?: ResolveOptions): MaybePromise<Response>;
 }) => MaybePromise<Response>;
 
+declare abstract class InstrumentedEntrypoint<E extends Record<string, unknown>> extends WorkerEntrypoint<E> {
+    private enhancedEnv;
+    constructor(ctx: ExecutionContext, env: E);
+    set instrumentedEnv(env: E);
+    protected entrypointContext<EntrypointContext>(): EntrypointContext;
+}
+
 type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceConfig;
 type ConfigurationOption = TraceConfig | ResolveConfigFn;
+
 declare function isRequest(trigger: Trigger): trigger is Request;
 declare function isMessageBatch(trigger: Trigger): trigger is MessageBatch;
 declare function isAlarm(trigger: Trigger): trigger is 'do-alarm';
+declare function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator;
 declare function instrumentPage(eventHandler: ExportedSvelteEventHandler, config: ConfigurationOption): ExportedSvelteEventHandler;
 declare function instrument<E, Q, C>(handler: ExportedHandler<E, Q, C>, config: ConfigurationOption): ExportedHandler<E, Q, C>;
 declare function instrumentDO(doClass: DOClass, config: ConfigurationOption): DOClass;
@@ -371,4 +381,4 @@ declare class BatchTraceSpanProcessor implements SpanProcessor {
 
 declare function withNextSpan(attrs: Attributes): void;
 
-export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };
+export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, InstrumentedEntrypoint, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };

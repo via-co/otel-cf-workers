@@ -2193,8 +2193,8 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-rc.49";
-var node = "18.18.2";
+var _microlabs_otel_cf_workers = "1.0.0-fp.50";
+var node = "20.19.0";
 
 // src/instrumentation/email.ts
 import { context as api_context6, SpanKind as SpanKind12, trace as trace14 } from "@opentelemetry/api";
@@ -2324,6 +2324,81 @@ function createPageHandler(pageFn, initialiser) {
   return wrap(pageFn, pagesHandler);
 }
 
+// src/instrumentation/entrypoint.ts
+import { SpanKind as SpanKind14, trace as trace16, context as api_context8 } from "@opentelemetry/api";
+import { SemanticAttributes as SemanticAttributes9 } from "@opentelemetry/semantic-conventions";
+import { WorkerEntrypoint } from "cloudflare:workers";
+var traceIdSymbol3 = Symbol("traceId");
+var InstrumentedEntrypoint = class extends WorkerEntrypoint {
+  enhancedEnv;
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.enhancedEnv = {};
+  }
+  set instrumentedEnv(env) {
+    this.enhancedEnv = env;
+  }
+  entrypointContext() {
+    return {
+      env: this.enhancedEnv,
+      fetch: this.fetch
+    };
+  }
+};
+function createEntrypointHandler(initialiser) {
+  const decorator = (target, propertyKey, descriptor) => {
+    const original = descriptor.value;
+    descriptor.value = async function(...args) {
+      const originalRef = this;
+      const orig_env = originalRef.env;
+      const orig_ctx = originalRef.ctx;
+      const config = initialiser(orig_env, this);
+      const env = instrumentEnv(orig_env);
+      originalRef.fetch = instrumentClientFetch(originalRef.fetch, (config2) => config2.fetch);
+      const { tracker } = proxyExecutionContext(orig_ctx);
+      const context3 = setConfig(config);
+      try {
+        originalRef.instrumentedEnv = env;
+        const executeEntrypointHandler = () => {
+          const tracer2 = trace16.getTracer("queueHandler");
+          const options = {
+            attributes: {
+              [SemanticAttributes9.FAAS_TRIGGER]: "rpc",
+              "rpc.function.name": propertyKey
+            },
+            kind: SpanKind14.SERVER
+          };
+          const promise = tracer2.startActiveSpan(
+            `RPC ${target.constructor.name}.${propertyKey}`,
+            options,
+            async (span) => {
+              const traceId = span.spanContext().traceId;
+              api_context8.active().setValue(traceIdSymbol3, traceId);
+              try {
+                const result = await original.apply(originalRef, args);
+                span.end();
+                return result;
+              } catch (error) {
+                span.recordException(error);
+                span.end();
+                throw error;
+              }
+            }
+          );
+          return promise;
+        };
+        return await api_context8.with(context3, executeEntrypointHandler);
+      } catch (error) {
+        throw error;
+      } finally {
+        orig_ctx.waitUntil(exportSpans(tracker));
+      }
+    };
+    return descriptor;
+  };
+  return decorator;
+}
+
 // src/sdk.ts
 function isRequest(trigger) {
   return trigger instanceof Request;
@@ -2383,6 +2458,10 @@ function createInitialiser(config) {
       return conf;
     };
   }
+}
+function instrumentEntrypoint(config) {
+  const initialiser = createInitialiser(config);
+  return createEntrypointHandler(initialiser);
 }
 function instrumentPage(eventHandler, config) {
   const initialiser = createInitialiser(config);
@@ -2459,6 +2538,7 @@ var MultiSpanExporterAsync = class {
 };
 export {
   BatchTraceSpanProcessor,
+  InstrumentedEntrypoint,
   MultiSpanExporter,
   MultiSpanExporterAsync,
   OTLPExporter,
@@ -2467,6 +2547,7 @@ export {
   createSampler,
   instrument,
   instrumentDO,
+  instrumentEntrypoint,
   instrumentPage,
   isAlarm,
   isHeadSampled,

@@ -80,3 +80,4 @@ export type Trigger =
 	| DOConstructorTrigger
 	| 'do-alarm'
 	| ForwardableEmailMessage
+	| PropertyDescriptor

@@ -14,6 +14,7 @@ import { createScheduledHandler } from './instrumentation/scheduled.js'
 import * as versions from '../versions.json'
 import { createEmailHandler } from './instrumentation/email.js'
 import { createPageHandler, ExportedSvelteEventHandler } from './instrumentation/page.js'
+import { createEntrypointHandler } from './instrumentation/entrypoint.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -22,6 +23,8 @@ type EmailHandler = EmailExportedHandler
 
 export type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceConfig
 export type ConfigurationOption = TraceConfig | ResolveConfigFn
+
+export { InstrumentedEntrypoint } from './instrumentation/entrypoint.js'
 
 export function isRequest(trigger: Trigger): trigger is Request {
 	return trigger instanceof Request
@@ -87,6 +90,11 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 			return conf
 		}
 	}
+}
+
+export function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator {
+	const initialiser = createInitialiser(config)
+	return createEntrypointHandler(initialiser)
 }
 
 export function instrumentPage(

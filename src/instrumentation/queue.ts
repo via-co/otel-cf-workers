@@ -1,4 +1,12 @@
-import { trace, SpanOptions, SpanKind, Attributes, Exception, context as api_context } from '@opentelemetry/api'
+import {
+	trace,
+	SpanOptions,
+	SpanKind,
+	Attributes,
+	Exception,
+	context as api_context,
+	propagation,
+} from '@opentelemetry/api'
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
 import { Initialiser, setConfig } from '../config.js'
 import { exportSpans, proxyExecutionContext } from './common.js'
@@ -187,11 +195,30 @@ export function createQueueHandler(queueFn: QueueHandler, initialiser: Initialis
 	return wrap(queueFn, queueHandler)
 }
 
+type SimpleQueueRequest = {
+	metadata: Record<string, string>
+}
+
+function propagateContext(argArray: unknown[]) {
+	const shouldPropagate = argArray?.length > 0 && typeof argArray[0] === 'object'
+
+	const request = shouldPropagate ? (argArray[0] as SimpleQueueRequest) : undefined
+	if (request) {
+		request.metadata = request.metadata ? request.metadata : {}
+	}
+	if (request) {
+		propagation.inject(api_context.active(), request.metadata, {
+			set: (h, k, v) => (h[k] = typeof v === 'string' ? v : String(v)),
+		})
+	}
+}
+
 function instrumentQueueSend(fn: Queue<unknown>['send'], name: string): Queue<unknown>['send'] {
 	const tracer = trace.getTracer('queueSender')
 	const handler: ProxyHandler<Queue<unknown>['send']> = {
 		apply: (target, thisArg, argArray) => {
 			return tracer.startActiveSpan(`Queues ${name} send`, async (span) => {
+				propagateContext(argArray)
 				span.setAttribute('queue.operation', 'send')
 				await Reflect.apply(target, unwrap(thisArg), argArray)
 				span.end()

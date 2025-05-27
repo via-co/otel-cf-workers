@@ -1,9 +1,16 @@
-import { SpanKind, SpanOptions, trace, context as api_context, Exception } from '@opentelemetry/api'
-import { Initialiser, setConfig } from '../config'
+import {
+	SpanKind,
+	SpanOptions,
+	trace,
+	context as api_context,
+	Exception,
+	propagation,
+	Context,
+} from '@opentelemetry/api'
+import { getActiveConfig, Initialiser, setConfig } from '../config'
 import { exportSpans, proxyExecutionContext } from './common'
 import { instrumentEnv } from './env'
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
-import { instrumentClientFetch } from './fetch'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 
 const traceIdSymbol = Symbol('traceId')
@@ -28,6 +35,34 @@ export abstract class InstrumentedEntrypoint<E extends Record<string, unknown>> 
 	}
 }
 
+export function getParentContextFromMetadata(metadata: Record<string, string | string[] | undefined>): Context {
+	return propagation.extract<Record<string, unknown>>(api_context.active(), metadata, {
+		get(headers, key) {
+			const value = headers[key] || undefined
+			if (Array.isArray(value)) {
+				return value as string[]
+			}
+			return value as string
+		},
+		keys(data) {
+			return [...Object.keys(data)]
+		},
+	})
+}
+
+function getParentContextFromEntrypoint(request: Record<string, unknown>) {
+	const workerConfig = getActiveConfig()
+
+	if (workerConfig === undefined) {
+		return api_context.active()
+	}
+
+	const acceptTraceContext = workerConfig.handlers.fetch.acceptTraceContext ?? true
+	return acceptTraceContext
+		? getParentContextFromMetadata(request['metadata'] as Record<string, string | string[] | undefined>)
+		: api_context.active()
+}
+
 export function createEntrypointHandler<E extends Record<string, unknown>>(initialiser: Initialiser): MethodDecorator {
 	// @ts-expect-error type checking
 	const decorator: MethodDecorator = <Target extends InstrumentedEntrypoint<E>>(
@@ -37,6 +72,8 @@ export function createEntrypointHandler<E extends Record<string, unknown>>(initi
 	) => {
 		const original = descriptor.value
 		descriptor.value = async function (...args: unknown[]) {
+			const request = args?.length > 0 ? (args[0] as Record<string, unknown>) : {}
+			const spanContext = getParentContextFromEntrypoint(request)
 			const originalRef = this as InstrumentedEntrypoint<E>
 			// @ts-expect-error type check
 			const orig_env = originalRef.env
@@ -53,7 +90,7 @@ export function createEntrypointHandler<E extends Record<string, unknown>>(initi
 				// @ts-expect-error type checking
 				originalRef.instrumentedEnv = env
 				const executeEntrypointHandler = (): Promise<unknown> => {
-					const tracer = trace.getTracer('queueHandler')
+					const tracer = trace.getTracer('rpcHandler')
 					const options: SpanOptions = {
 						attributes: {
 							[SemanticAttributes.FAAS_TRIGGER]: 'rpc',
@@ -64,6 +101,7 @@ export function createEntrypointHandler<E extends Record<string, unknown>>(initi
 					const promise = tracer.startActiveSpan(
 						`RPC ${target.constructor.name}.${propertyKey}`,
 						options,
+						spanContext,
 						async (span) => {
 							const traceId = span.spanContext().traceId
 							api_context.active().setValue(traceIdSymbol, traceId)

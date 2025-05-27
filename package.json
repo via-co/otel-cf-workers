@@ -1,6 +1,6 @@
 {
 	"name": "@microlabs/otel-cf-workers",
-	"version": "1.0.0-fp.50",
+	"version": "1.0.0-fp.51",
 	"main": "dist/index.js",
 	"module": "dist/index.mjs",
 	"types": "dist/index.d.mts",
@@ -39,7 +39,6 @@
 	],
 	"homepage": "https://github.com/evanderkoogh/otel-cf-workers#readme",
 	"dependencies": {
-		"@cloudflare/workers-types": "^4.20250504.0",
 		"@opentelemetry/core": "^1.26.0",
 		"@opentelemetry/exporter-trace-otlp-http": "^0.53.0",
 		"@opentelemetry/otlp-exporter-base": "^0.53.0",
@@ -50,6 +49,7 @@
 	},
 	"devDependencies": {
 		"@changesets/cli": "^2.27.8",
+		"@cloudflare/workers-types": "^4.20250506.0",
 		"cookie": "^1.0.2",
 		"husky": "^9.1.6",
 		"lint-staged": "^15.2.10",

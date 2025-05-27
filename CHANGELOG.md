@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.51
+
+### Patch Changes
+
+- Accept context propagation for entrypoints
+
 ## 1.0.0-fp.50
 
 ### Patch Changes

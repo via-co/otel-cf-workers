@@ -32,7 +32,7 @@ function createSampler(conf) {
 }
 
 // src/sdk.ts
-import { propagation as propagation2 } from "@opentelemetry/api";
+import { propagation as propagation3 } from "@opentelemetry/api";
 import { Resource } from "@opentelemetry/resources";
 
 // src/config.ts
@@ -1108,7 +1108,7 @@ function instrumentBindingStub(stub, nsName) {
           "do.id": target.id.toString(),
           "do.id.name": target.id.name
         };
-        return instrumentClientFetch(fetcher, () => ({ includeTraceContext: true }), attrs);
+        return instrumentClientFetch2(fetcher, () => ({ includeTraceContext: true }), attrs);
       } else {
         return passthroughGet(target, prop);
       }
@@ -1544,14 +1544,14 @@ function executeQueueHandler(queueFn, [batch, env, ctx]) {
       span.setAttribute("queue.implicitly_acked", count.total - count.succeeded - count.failed);
       count.ackRemaining();
       span.setAttributes(count.toAttributes());
-      span.end();
       return result;
     } catch (error) {
       span.recordException(error);
       span.setAttribute("queue.implicitly_retried", count.total - count.succeeded - count.failed);
       count.retryRemaining();
-      span.end();
       throw error;
+    } finally {
+      span.end();
     }
   });
   return promise;
@@ -1628,7 +1628,7 @@ function instrumentServiceBinding(fetcher, envName) {
         const attrs = {
           name: `Service Binding ${envName}`
         };
-        return instrumentClientFetch(fetcher2, () => ({ includeTraceContext: true }), attrs);
+        return instrumentClientFetch2(fetcher2, () => ({ includeTraceContext: true }), attrs);
       } else {
         return passthroughGet(target, prop);
       }
@@ -2020,7 +2020,7 @@ function createFetchHandler(fetchFn, initialiser) {
   };
   return wrap(fetchFn, fetchHandler);
 }
-function instrumentClientFetch(fetchFn, configFn, attrs) {
+function instrumentClientFetch2(fetchFn, configFn, attrs) {
   const handler = {
     apply: (target, thisArg, argArray) => {
       const request = new Request(argArray[0], argArray[1]);
@@ -2063,7 +2063,7 @@ function instrumentClientFetch(fetchFn, configFn, attrs) {
   return wrap(fetchFn, handler, true);
 }
 function instrumentGlobalFetch() {
-  globalThis.fetch = instrumentClientFetch(globalThis.fetch, (config) => config.fetch);
+  globalThis.fetch = instrumentClientFetch2(globalThis.fetch, (config) => config.fetch);
 }
 
 // src/instrumentation/cache.ts
@@ -2193,8 +2193,8 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.50";
-var node = "20.19.0";
+var _microlabs_otel_cf_workers = "1.0.0-fp.51";
+var node = "22.14.0";
 
 // src/instrumentation/email.ts
 import { context as api_context6, SpanKind as SpanKind12, trace as trace14 } from "@opentelemetry/api";
@@ -2308,7 +2308,7 @@ function createPageHandler(pageFn, initialiser) {
       const config = initialiser(env, event.request);
       const configContext = setConfig(config);
       event.locals.env = instrumentEnv(env);
-      event.fetch = instrumentClientFetch(event.fetch, (config2) => config2.fetch);
+      event.fetch = instrumentClientFetch2(event.fetch, (config2) => config2.fetch);
       const { ctx, tracker } = proxyExecutionContext(context3);
       event.locals.ctx = ctx;
       try {
@@ -2325,7 +2325,12 @@ function createPageHandler(pageFn, initialiser) {
 }
 
 // src/instrumentation/entrypoint.ts
-import { SpanKind as SpanKind14, trace as trace16, context as api_context8 } from "@opentelemetry/api";
+import {
+  SpanKind as SpanKind14,
+  trace as trace16,
+  context as api_context8,
+  propagation as propagation2
+} from "@opentelemetry/api";
 import { SemanticAttributes as SemanticAttributes9 } from "@opentelemetry/semantic-conventions";
 import { WorkerEntrypoint } from "cloudflare:workers";
 var traceIdSymbol3 = Symbol("traceId");
@@ -2345,10 +2350,34 @@ var InstrumentedEntrypoint = class extends WorkerEntrypoint {
     };
   }
 };
+function getParentContextFromMetadata(metadata) {
+  return propagation2.extract(api_context8.active(), metadata, {
+    get(headers, key) {
+      const value = headers[key] || void 0;
+      if (Array.isArray(value)) {
+        return value;
+      }
+      return value;
+    },
+    keys(data) {
+      return [...Object.keys(data)];
+    }
+  });
+}
+function getParentContextFromEntrypoint(request) {
+  const workerConfig = getActiveConfig();
+  if (workerConfig === void 0) {
+    return api_context8.active();
+  }
+  const acceptTraceContext = workerConfig.handlers.fetch.acceptTraceContext ?? true;
+  return acceptTraceContext ? getParentContextFromMetadata(request["metadata"]) : api_context8.active();
+}
 function createEntrypointHandler(initialiser) {
   const decorator = (target, propertyKey, descriptor) => {
     const original = descriptor.value;
     descriptor.value = async function(...args) {
+      const request = args?.length > 0 ? args[0] : {};
+      const spanContext = getParentContextFromEntrypoint(request);
       const originalRef = this;
       const orig_env = originalRef.env;
       const orig_ctx = originalRef.ctx;
@@ -2360,7 +2389,7 @@ function createEntrypointHandler(initialiser) {
       try {
         originalRef.instrumentedEnv = env;
         const executeEntrypointHandler = () => {
-          const tracer2 = trace16.getTracer("queueHandler");
+          const tracer2 = trace16.getTracer("rpcHandler");
           const options = {
             attributes: {
               [SemanticAttributes9.FAAS_TRIGGER]: "rpc",
@@ -2371,6 +2400,7 @@ function createEntrypointHandler(initialiser) {
           const promise = tracer2.startActiveSpan(
             `RPC ${target.constructor.name}.${propertyKey}`,
             options,
+            spanContext,
             async (span) => {
               const traceId = span.spanContext().traceId;
               api_context8.active().setValue(traceIdSymbol3, traceId);
@@ -2437,7 +2467,7 @@ function init(config) {
     if (config.instrumentation.instrumentGlobalFetch) {
       instrumentGlobalFetch();
     }
-    propagation2.setGlobalPropagator(config.propagator);
+    propagation3.setGlobalPropagator(config.propagator);
     const resource = createResource(config);
     const provider = new WorkerTracerProvider(config.spanProcessors, resource);
     provider.register();

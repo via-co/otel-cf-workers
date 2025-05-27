@@ -7,11 +7,13 @@ import {
 	propagation,
 	Context,
 } from '@opentelemetry/api'
-import { getActiveConfig, Initialiser, setConfig } from '../config'
+import { Initialiser, setConfig } from '../config'
 import { exportSpans, proxyExecutionContext } from './common'
 import { instrumentEnv } from './env'
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
 import { WorkerEntrypoint } from 'cloudflare:workers'
+import { instrumentClientFetch } from './fetch'
+import { ResolvedTraceConfig } from '../types'
 
 const traceIdSymbol = Symbol('traceId')
 
@@ -50,9 +52,10 @@ export function getParentContextFromMetadata(metadata: Record<string, string | s
 	})
 }
 
-function getParentContextFromEntrypoint(request: Record<string, unknown>) {
-	const workerConfig = getActiveConfig()
-
+function getParentContextFromEntrypoint(
+	workerConfig: ResolvedTraceConfig | undefined,
+	request: Record<string, unknown>,
+) {
 	if (workerConfig === undefined) {
 		return api_context.active()
 	}
@@ -73,7 +76,6 @@ export function createEntrypointHandler<E extends Record<string, unknown>>(initi
 		const original = descriptor.value
 		descriptor.value = async function (...args: unknown[]) {
 			const request = args?.length > 0 ? (args[0] as Record<string, unknown>) : {}
-			const spanContext = getParentContextFromEntrypoint(request)
 			const originalRef = this as InstrumentedEntrypoint<E>
 			// @ts-expect-error type check
 			const orig_env = originalRef.env
@@ -90,6 +92,7 @@ export function createEntrypointHandler<E extends Record<string, unknown>>(initi
 				// @ts-expect-error type checking
 				originalRef.instrumentedEnv = env
 				const executeEntrypointHandler = (): Promise<unknown> => {
+					const spanContext = getParentContextFromEntrypoint(config, request)
 					const tracer = trace.getTracer('rpcHandler')
 					const options: SpanOptions = {
 						attributes: {

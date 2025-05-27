@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.52
+
+### Patch Changes
+
+- Allow trace propagation for queues and entrypoints
+
 ## 1.0.0-fp.51
 
 ### Patch Changes

@@ -1133,7 +1133,7 @@ function instrumentBindingStub(stub, nsName) {
           "do.id": target.id.toString(),
           "do.id.name": target.id.name
         };
-        return instrumentClientFetch(fetcher, () => ({ includeTraceContext: true }), attrs);
+        return instrumentClientFetch2(fetcher, () => ({ includeTraceContext: true }), attrs);
       } else {
         return passthroughGet(target, prop);
       }
@@ -1569,14 +1569,14 @@ function executeQueueHandler(queueFn, [batch, env, ctx]) {
       span.setAttribute("queue.implicitly_acked", count.total - count.succeeded - count.failed);
       count.ackRemaining();
       span.setAttributes(count.toAttributes());
-      span.end();
       return result;
     } catch (error) {
       span.recordException(error);
       span.setAttribute("queue.implicitly_retried", count.total - count.succeeded - count.failed);
       count.retryRemaining();
-      span.end();
       throw error;
+    } finally {
+      span.end();
     }
   });
   return promise;
@@ -1653,7 +1653,7 @@ function instrumentServiceBinding(fetcher, envName) {
         const attrs = {
           name: `Service Binding ${envName}`
         };
-        return instrumentClientFetch(fetcher2, () => ({ includeTraceContext: true }), attrs);
+        return instrumentClientFetch2(fetcher2, () => ({ includeTraceContext: true }), attrs);
       } else {
         return passthroughGet(target, prop);
       }
@@ -2045,7 +2045,7 @@ function createFetchHandler(fetchFn, initialiser) {
   };
   return wrap(fetchFn, fetchHandler);
 }
-function instrumentClientFetch(fetchFn, configFn, attrs) {
+function instrumentClientFetch2(fetchFn, configFn, attrs) {
   const handler = {
     apply: (target, thisArg, argArray) => {
       const request = new Request(argArray[0], argArray[1]);
@@ -2088,7 +2088,7 @@ function instrumentClientFetch(fetchFn, configFn, attrs) {
   return wrap(fetchFn, handler, true);
 }
 function instrumentGlobalFetch() {
-  globalThis.fetch = instrumentClientFetch(globalThis.fetch, (config) => config.fetch);
+  globalThis.fetch = instrumentClientFetch2(globalThis.fetch, (config) => config.fetch);
 }
 
 // src/instrumentation/cache.ts
@@ -2218,8 +2218,8 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.50";
-var node = "20.19.0";
+var _microlabs_otel_cf_workers = "1.0.0-fp.51";
+var node = "22.14.0";
 
 // src/instrumentation/email.ts
 var import_api18 = require("@opentelemetry/api");
@@ -2329,7 +2329,7 @@ function createPageHandler(pageFn, initialiser) {
       const config = initialiser(env, event.request);
       const configContext = setConfig(config);
       event.locals.env = instrumentEnv(env);
-      event.fetch = instrumentClientFetch(event.fetch, (config2) => config2.fetch);
+      event.fetch = instrumentClientFetch2(event.fetch, (config2) => config2.fetch);
       const { ctx, tracker } = proxyExecutionContext(context3);
       event.locals.ctx = ctx;
       try {
@@ -2366,10 +2366,34 @@ var InstrumentedEntrypoint = class extends import_cloudflare_workers.WorkerEntry
     };
   }
 };
+function getParentContextFromMetadata(metadata) {
+  return import_api20.propagation.extract(import_api20.context.active(), metadata, {
+    get(headers, key) {
+      const value = headers[key] || void 0;
+      if (Array.isArray(value)) {
+        return value;
+      }
+      return value;
+    },
+    keys(data) {
+      return [...Object.keys(data)];
+    }
+  });
+}
+function getParentContextFromEntrypoint(request) {
+  const workerConfig = getActiveConfig();
+  if (workerConfig === void 0) {
+    return import_api20.context.active();
+  }
+  const acceptTraceContext = workerConfig.handlers.fetch.acceptTraceContext ?? true;
+  return acceptTraceContext ? getParentContextFromMetadata(request["metadata"]) : import_api20.context.active();
+}
 function createEntrypointHandler(initialiser) {
   const decorator = (target, propertyKey, descriptor) => {
     const original = descriptor.value;
     descriptor.value = async function(...args) {
+      const request = args?.length > 0 ? args[0] : {};
+      const spanContext = getParentContextFromEntrypoint(request);
       const originalRef = this;
       const orig_env = originalRef.env;
       const orig_ctx = originalRef.ctx;
@@ -2381,7 +2405,7 @@ function createEntrypointHandler(initialiser) {
       try {
         originalRef.instrumentedEnv = env;
         const executeEntrypointHandler = () => {
-          const tracer2 = import_api20.trace.getTracer("queueHandler");
+          const tracer2 = import_api20.trace.getTracer("rpcHandler");
           const options = {
             attributes: {
               [import_semantic_conventions9.SemanticAttributes.FAAS_TRIGGER]: "rpc",
@@ -2392,6 +2416,7 @@ function createEntrypointHandler(initialiser) {
           const promise = tracer2.startActiveSpan(
             `RPC ${target.constructor.name}.${propertyKey}`,
             options,
+            spanContext,
             async (span) => {
               const traceId = span.spanContext().traceId;
               import_api20.context.active().setValue(traceIdSymbol3, traceId);

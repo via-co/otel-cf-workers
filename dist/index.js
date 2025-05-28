@@ -1617,7 +1617,7 @@ function instrumentQueueSend(fn, name) {
   const tracer2 = import_api12.trace.getTracer("queueSender");
   const handler = {
     apply: (target, thisArg, argArray) => {
-      return tracer2.startActiveSpan(`Queues ${name} send`, async (span) => {
+      return tracer2.startActiveSpan(`PRODUCER ${name}.send`, async (span) => {
         propagateContext(argArray);
         span.setAttribute("queue.operation", "send");
         await Reflect.apply(target, unwrap(thisArg), argArray);
@@ -1631,7 +1631,7 @@ function instrumentQueueSendBatch(fn, name) {
   const tracer2 = import_api12.trace.getTracer("queueSender");
   const handler = {
     apply: (target, thisArg, argArray) => {
-      return tracer2.startActiveSpan(`Queues ${name} sendBatch`, async (span) => {
+      return tracer2.startActiveSpan(`PRODUCER ${name}.sendBatch`, async (span) => {
         span.setAttribute("queue.operation", "sendBatch");
         await Reflect.apply(target, unwrap(thisArg), argArray);
         span.end();
@@ -2285,7 +2285,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.52";
+var _microlabs_otel_cf_workers = "1.0.0-fp.53";
 var node = "22.14.0";
 
 // src/instrumentation/email.ts

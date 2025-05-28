@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.53
+
+### Patch Changes
+
+- Improve queue producer span name for better readability
+
 ## 1.0.0-fp.52
 
 ### Patch Changes

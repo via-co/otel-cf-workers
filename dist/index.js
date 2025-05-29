@@ -2285,8 +2285,8 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.53";
-var node = "22.14.0";
+var _microlabs_otel_cf_workers = "1.0.0-fp.54";
+var node = "18.18.2";
 
 // src/instrumentation/email.ts
 var import_api19 = require("@opentelemetry/api");
@@ -2452,7 +2452,7 @@ function getParentContextFromEntrypoint(workerConfig, request) {
     return import_api21.context.active();
   }
   const acceptTraceContext = workerConfig.handlers.fetch.acceptTraceContext ?? true;
-  return acceptTraceContext ? getParentContextFromMetadata(request["metadata"]) : import_api21.context.active();
+  return acceptTraceContext && !!request ? getParentContextFromMetadata(request["metadata"] ?? {}) : import_api21.context.active();
 }
 function createEntrypointHandler(initialiser) {
   const decorator = (target, propertyKey, descriptor) => {

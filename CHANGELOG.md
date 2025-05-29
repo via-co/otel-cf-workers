@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.54
+
+### Patch Changes
+
+- Null check
+
 ## 1.0.0-fp.53
 
 ### Patch Changes

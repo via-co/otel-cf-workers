@@ -61,8 +61,8 @@ function getParentContextFromEntrypoint(
 	}
 
 	const acceptTraceContext = workerConfig.handlers.fetch.acceptTraceContext ?? true
-	return acceptTraceContext
-		? getParentContextFromMetadata(request['metadata'] as Record<string, string | string[] | undefined>)
+	return acceptTraceContext && !!request
+		? getParentContextFromMetadata((request['metadata'] as Record<string, string | string[] | undefined>) ?? {})
 		: api_context.active()
 }
 

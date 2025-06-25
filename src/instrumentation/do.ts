@@ -69,7 +69,7 @@ export function instrumentState(state: DurableObjectState) {
 		get(target, prop, receiver) {
 			const result = Reflect.get(target, prop, unwrap(receiver))
 			if (prop === 'storage') {
-				return instrumentStorage(result)
+				return instrumentStorage(result.bind(target))
 			} else if (typeof result === 'function') {
 				return result.bind(target)
 			} else {

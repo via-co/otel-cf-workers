@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.56
+
+### Patch Changes
+
+- Inject instrumented durable object state in the env
+
 ## 1.0.0-fp.55
 
 ### Patch Changes

@@ -212,11 +212,10 @@ export function instrumentDOClass(doClass: DOClass, initialiser: Initialiser): D
 			const state = instrumentState(orig_state)
 			const env = instrumentEnv(orig_env)
 			const createDO = () => {
+				env['injected:state'] = state
 				return new target(orig_state, env)
 			}
 			const doObj = api_context.with(context, createDO)
-			// @ts-expect-error type checking
-			doObj.ctx = state
 
 			return instrumentDurableObject(doObj, initialiser, env, state)
 		},

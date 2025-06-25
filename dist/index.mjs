@@ -1275,10 +1275,10 @@ function instrumentDOClass(doClass, initialiser) {
       const state2 = instrumentState(orig_state);
       const env = instrumentEnv(orig_env);
       const createDO = () => {
+        env["injected:state"] = state2;
         return new target(orig_state, env);
       };
       const doObj = api_context2.with(context3, createDO);
-      doObj.ctx = state2;
       return instrumentDurableObject(doObj, initialiser, env, state2);
     }
   };
@@ -2272,7 +2272,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.55";
+var _microlabs_otel_cf_workers = "1.0.0-fp.56";
 var node = "22.14.0";
 
 // src/instrumentation/email.ts

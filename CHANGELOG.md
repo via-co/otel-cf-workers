@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.55
+
+### Patch Changes
+
+- Change to support durable objects
+
 ## 1.0.0-fp.54
 
 ### Patch Changes

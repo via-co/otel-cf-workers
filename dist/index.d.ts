@@ -1,10 +1,10 @@
 import { SpanExporter, ReadableSpan, Sampler, SpanProcessor, TimedEvent } from '@opentelemetry/sdk-trace-base';
-import { TextMapPropagator, Span, SpanKind, Attributes, SpanStatus, HrTime, Link, SpanContext, AttributeValue, TimeInput, Exception, Context } from '@opentelemetry/api';
+import { TextMapPropagator, SpanOptions, Context, Attributes, Span, SpanContext, SpanKind, SpanStatus, HrTime, Link, TimeInput, AttributeValue, Exception } from '@opentelemetry/api';
+import { ExportResult, InstrumentationScope } from '@opentelemetry/core';
 import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base';
-import { ExportResult, InstrumentationLibrary } from '@opentelemetry/core';
+import { DurableObject as DurableObject$1, WorkerEntrypoint } from 'cloudflare:workers';
 import * as cookie from 'cookie';
-import { IResource } from '@opentelemetry/resources';
-import { WorkerEntrypoint } from 'cloudflare:workers';
+import { Resource } from '@opentelemetry/resources';
 
 interface OTLPExporterConfig {
     url: string;
@@ -33,10 +33,27 @@ interface FetchHandlerConfig {
      */
     acceptTraceContext?: boolean | AcceptTraceContextFn;
 }
-declare function waitUntilTrace(fn: () => Promise<any>): Promise<void>;
 
+type OrPromise<T extends any> = T | Promise<T>;
+type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceConfig;
+type ConfigurationOption = TraceConfig | ResolveConfigFn;
 type PostProcessorFn = (spans: ReadableSpan[]) => ReadableSpan[];
 type ExporterConfig = OTLPExporterConfig | SpanExporter;
+interface InitialSpanInfo {
+    name: string;
+    options: SpanOptions;
+    context?: Context;
+}
+interface HandlerInstrumentation<T extends Trigger, R extends any> {
+    getInitialSpanInfo: (trigger: T) => InitialSpanInfo;
+    getAttributesFromResult?: (result: Awaited<R>) => Attributes;
+    instrumentTrigger?: (trigger: T) => T;
+    executionSucces?: (span: Span, trigger: T, result: Awaited<R>) => void;
+    executionFailed?: (span: Span, trigger: T, error?: any) => void;
+}
+type TraceFlushableSpanProcessor = SpanProcessor & {
+    forceFlush: (traceId?: string) => Promise<void>;
+};
 interface HandlerConfig {
     fetch?: FetchHandlerConfig;
 }
@@ -101,9 +118,17 @@ declare const isHeadSampled: TailSampleFn;
 declare const isRootErrorSpan: TailSampleFn;
 declare function createSampler(conf: ParentRatioSamplingConfig): Sampler;
 
+type DO = DurableObject | DurableObject$1;
 type DOClass = {
-    new (state: DurableObjectState, env: any): DurableObject;
+    new (state: DurableObjectState, env: any): DO;
 };
+
+declare class PromiseTracker {
+    _outstandingPromises: Promise<unknown>[];
+    get outstandingPromiseCount(): number;
+    track(promise: Promise<unknown>): void;
+    wait(): Promise<void>;
+}
 
 type Cookies = {
     /**
@@ -187,9 +212,9 @@ interface ResolveOptions {
     }): boolean;
 }
 type SvelteLocals = Partial<Record<string, any>>;
-type Env = unknown;
+type Env$1 = unknown;
 type SveltePlatform = {
-    env: Env;
+    env: Env$1;
     cf: CfProperties;
     ctx: ExecutionContext;
 };
@@ -289,17 +314,16 @@ declare abstract class InstrumentedEntrypoint<E extends Record<string, unknown>>
     protected entrypointContext<EntrypointContext>(): EntrypointContext;
 }
 
-type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceConfig;
-type ConfigurationOption = TraceConfig | ResolveConfigFn;
+type Env = Record<string, any>;
 
 declare function isRequest(trigger: Trigger): trigger is Request;
 declare function isMessageBatch(trigger: Trigger): trigger is MessageBatch;
 declare function isAlarm(trigger: Trigger): trigger is 'do-alarm';
 declare function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator;
-declare function instrumentPage(eventHandler: ExportedSvelteEventHandler, config: ConfigurationOption): ExportedSvelteEventHandler;
-declare function instrument<E, Q, C>(handler: ExportedHandler<E, Q, C>, config: ConfigurationOption): ExportedHandler<E, Q, C>;
+declare function exportSpans(traceId: string, tracker?: PromiseTracker): Promise<void>;
+declare function instrument<E extends Env, Q, C>(handler: ExportedHandler<E, Q, C>, config: ConfigurationOption): ExportedHandler<E, Q, C>;
 declare function instrumentDO(doClass: DOClass, config: ConfigurationOption): DOClass;
-
+declare function instrumentPage(eventHandler: ExportedSvelteEventHandler, config: ConfigurationOption): ExportedSvelteEventHandler;
 declare const __unwrappedFetch: typeof fetch;
 
 type OnSpanEnd = (span: Span) => void;
@@ -307,8 +331,9 @@ interface SpanInit {
     attributes: unknown;
     name: string;
     onEnd: OnSpanEnd;
-    resource: IResource;
+    resource: Resource;
     spanContext: SpanContext;
+    parentSpanContext?: SpanContext;
     links?: Link[];
     parentSpanId?: string;
     spanKind?: SpanKind;
@@ -319,6 +344,7 @@ declare class SpanImpl implements Span, ReadableSpan {
     private readonly _spanContext;
     private readonly onEnd;
     readonly parentSpanId?: string;
+    readonly parentSpanContext?: SpanContext | undefined;
     readonly kind: SpanKind;
     readonly attributes: Attributes;
     status: SpanStatus;
@@ -327,8 +353,8 @@ declare class SpanImpl implements Span, ReadableSpan {
     readonly startTime: HrTime;
     readonly events: TimedEvent[];
     readonly links: Link[];
-    readonly resource: IResource;
-    instrumentationLibrary: InstrumentationLibrary;
+    readonly resource: Resource;
+    instrumentationScope: InstrumentationScope;
     private _ended;
     private _droppedAttributesCount;
     private _droppedEventsCount;
@@ -365,20 +391,33 @@ declare class MultiSpanExporterAsync implements SpanExporter {
     shutdown(): Promise<void>;
 }
 
-declare class BatchTraceSpanProcessor implements SpanProcessor {
+declare class TraceState {
+    private unexportedSpans;
+    private inprogressSpans;
     private exporter;
-    private traceLookup;
-    private localRootSpanLookup;
-    private inprogressExports;
+    private exportPromises;
+    private localRootSpan?;
+    private traceDecision?;
     constructor(exporter: SpanExporter);
-    private action;
-    private export;
-    onStart(span: Span, parentContext: Context): void;
+    addSpan(span: Span): void;
+    endSpan(span: ReadableSpan): void;
+    sample(): void;
+    flush(): Promise<void>;
+    private isSpanInProgress;
+    private exportSpans;
+}
+type traceId = string;
+declare class BatchTraceSpanProcessor implements TraceFlushableSpanProcessor {
+    private exporter;
+    private traces;
+    constructor(exporter: SpanExporter);
+    getTraceState(traceId: string): TraceState;
+    onStart(span: Span, _parentContext: Context): void;
     onEnd(span: ReadableSpan): void;
-    forceFlush(): Promise<void>;
+    forceFlush(traceId?: traceId): Promise<void>;
     shutdown(): Promise<void>;
 }
 
 declare function withNextSpan(attrs: Attributes): void;
 
-export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, InstrumentedEntrypoint, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };
+export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type HandlerInstrumentation, type InitialSpanInfo, type InstrumentationOptions, InstrumentedEntrypoint, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type OrPromise, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type TraceFlushableSpanProcessor, type Trigger, __unwrappedFetch, createSampler, exportSpans, instrument, instrumentDO, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, withNextSpan };

@@ -1,6 +1,6 @@
 {
 	"name": "@microlabs/otel-cf-workers",
-	"version": "1.0.0-fp.57",
+	"version": "1.0.0-fp.58",
 	"module": "./dist/index.js",
 	"type": "module",
 	"types": "./dist/index.d.ts",
@@ -40,6 +40,7 @@
 		"@changesets/cli": "^2.29.3",
 		"@cloudflare/vitest-pool-workers": "^0.8.30",
 		"@cloudflare/workers-types": "^4.20250510.0",
+		"cookie": "^1.0.2",
 		"husky": "^9.1.7",
 		"lint-staged": "^15.5.2",
 		"npm-run-all": "^4.1.5",

@@ -1,5 +1,12 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.58
+
+### Patch Changes
+
+- f9faadf: Add support to automatically extract version information from the VersionMeta binding
+- Rebase with upstream:main
+
 ## 1.0.0-fp.57
 
 ### Patch Changes

@@ -1275,9 +1275,10 @@ function instrumentDOClass(doClass, initialiser) {
       const state2 = instrumentState(orig_state);
       const env = instrumentEnv(orig_env);
       const createDO = () => {
-        return new target(state2, env);
+        return new target(orig_state, env);
       };
       const doObj = api_context2.with(context3, createDO);
+      doObj.ctx = state2;
       return instrumentDurableObject(doObj, initialiser, env, state2);
     }
   };
@@ -2271,8 +2272,8 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.54";
-var node = "18.18.2";
+var _microlabs_otel_cf_workers = "1.0.0-fp.55";
+var node = "22.14.0";
 
 // src/instrumentation/email.ts
 import { context as api_context7, SpanKind as SpanKind13, trace as trace15 } from "@opentelemetry/api";

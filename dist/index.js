@@ -1168,7 +1168,7 @@ function instrumentState(state2) {
     get(target, prop, receiver) {
       const result = Reflect.get(target, prop, unwrap(receiver));
       if (prop === "storage") {
-        return instrumentStorage(result);
+        return instrumentStorage(result.bind(target));
       } else if (typeof result === "function") {
         return result.bind(target);
       } else {
@@ -2286,7 +2286,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.56";
+var _microlabs_otel_cf_workers = "1.0.0-fp.57";
 var node = "22.14.0";
 
 // src/instrumentation/email.ts

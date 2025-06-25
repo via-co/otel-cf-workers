@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.57
+
+### Patch Changes
+
+- Bind storage to the event state instance
+
 ## 1.0.0-fp.56
 
 ### Patch Changes

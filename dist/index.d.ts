@@ -2,7 +2,7 @@ import { SpanExporter, ReadableSpan, Sampler, SpanProcessor, TimedEvent } from '
 import { TextMapPropagator, SpanOptions, Context, Attributes, Span, SpanContext, SpanKind, SpanStatus, HrTime, Link, TimeInput, AttributeValue, Exception } from '@opentelemetry/api';
 import { ExportResult, InstrumentationScope } from '@opentelemetry/core';
 import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base';
-import { DurableObject as DurableObject$1, WorkerEntrypoint } from 'cloudflare:workers';
+import { DurableObject as DurableObject$1, WorkerEntrypoint, RpcTarget } from 'cloudflare:workers';
 import * as cookie from 'cookie';
 import { Resource } from '@opentelemetry/resources';
 
@@ -314,11 +314,21 @@ declare abstract class InstrumentedEntrypoint<E extends Record<string, unknown>>
     protected entrypointContext<EntrypointContext>(): EntrypointContext;
 }
 
+declare class InstrumentedDoRpc<DoClass extends DurableObject$1> extends RpcTarget {
+    protected targetDo: DoClass;
+    private metadata;
+    constructor(targetDo: DoClass, metadata: Record<string, unknown>);
+    getMetadata<R>(key: string): R;
+}
+
 type Env = Record<string, any>;
 
 declare function isRequest(trigger: Trigger): trigger is Request;
 declare function isMessageBatch(trigger: Trigger): trigger is MessageBatch;
 declare function isAlarm(trigger: Trigger): trigger is 'do-alarm';
+declare function instrumentDoRpcTarget(config: ConfigurationOption, targetClass: Function, omitFunctions?: string[]): <T extends {
+    new (...args: any[]): any;
+}>(constructor: T) => void;
 declare function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator;
 declare function exportSpans(traceId: string, tracker?: PromiseTracker): Promise<void>;
 declare function instrument<E extends Env, Q, C>(handler: ExportedHandler<E, Q, C>, config: ConfigurationOption): ExportedHandler<E, Q, C>;
@@ -420,4 +430,4 @@ declare class BatchTraceSpanProcessor implements TraceFlushableSpanProcessor {
 
 declare function withNextSpan(attrs: Attributes): void;
 
-export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type HandlerInstrumentation, type InitialSpanInfo, type InstrumentationOptions, InstrumentedEntrypoint, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type OrPromise, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type TraceFlushableSpanProcessor, type Trigger, __unwrappedFetch, createSampler, exportSpans, instrument, instrumentDO, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, withNextSpan };
+export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type HandlerInstrumentation, type InitialSpanInfo, type InstrumentationOptions, InstrumentedDoRpc, InstrumentedEntrypoint, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type OrPromise, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type TraceFlushableSpanProcessor, type Trigger, __unwrappedFetch, createSampler, exportSpans, instrument, instrumentDO, instrumentDoRpcTarget, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, withNextSpan };

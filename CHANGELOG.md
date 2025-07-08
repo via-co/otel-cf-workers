@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.59
+
+### Patch Changes
+
+- 16746ce: Add support for durable objects class style
+
 ## 1.0.0-fp.58
 
 ### Patch Changes

@@ -214,6 +214,8 @@ function instrumentDurableObject(
 			} else if (prop === 'alarm') {
 				const alarmFn = Reflect.get(target, prop)
 				return instrumentAlarmFn(alarmFn, initialiser, env, state.id)
+			} else if (prop === 'withTable' || prop === 'applySeed' || prop === 'db' || prop === 'clientInstances') {
+				return Reflect.get(target, prop)
 			} else {
 				const result = Reflect.get(target, prop)
 				if (typeof result === 'function') {

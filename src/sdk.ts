@@ -23,6 +23,7 @@ import * as versions from '../versions.json'
 import { env } from 'cloudflare:workers'
 import { createPageHandler, ExportedSvelteEventHandler } from './instrumentation/page.js'
 import { createEntrypointHandler } from './instrumentation/entrypoint.js'
+import { createDoMethodHandler } from './instrumentation/do-class.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -37,6 +38,7 @@ type HandlerFn<T extends Trigger, E extends Env, R extends any> = (
 ) => R | Promise<R>
 
 export { InstrumentedEntrypoint } from './instrumentation/entrypoint.js'
+export { InstrumentedDoRpc } from './instrumentation/do-class.js'
 
 export function isRequest(trigger: Trigger): trigger is Request {
 	return trigger instanceof Request
@@ -61,7 +63,6 @@ function findVersionMeta(): WorkerVersionMetadata | undefined {
 }
 
 const createResource = (config: ResolvedTraceConfig, versionMeta?: WorkerVersionMetadata): Resource => {
-	console.log({ versionMeta })
 	const workerResourceAttrs = {
 		'cloud.provider': 'cloudflare',
 		'cloud.platform': 'cloudflare.workers',
@@ -118,6 +119,11 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 	}
 }
 
+export function instrumentDoRpcTarget(config: ConfigurationOption, targetClass: Function, omitFunctions?: string[]) {
+	const initialiser = createInitialiser(config)
+	return createDoMethodHandler(initialiser, targetClass, omitFunctions ?? [])
+}
+
 export function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator {
 	const initialiser = createInitialiser(config)
 	return createEntrypointHandler(initialiser)
@@ -134,8 +140,12 @@ export async function exportSpans(traceId: string, tracker?: PromiseTracker) {
 	}
 }
 
-type HandlerFnArgs<T extends Trigger, E extends Env> = (T | E | ExecutionContext)[]
-type OrderedHandlerFnArgs<T extends Trigger, E extends Env> = [trigger: T, env: E, ctx: ExecutionContext]
+type HandlerFnArgs<T extends Trigger, E extends Env> = (T | E | ExecutionContext | DurableObjectState)[]
+type OrderedHandlerFnArgs<T extends Trigger, E extends Env> = [
+	trigger: T,
+	env: E,
+	ctx: ExecutionContext | DurableObjectState,
+]
 
 let cold_start = true
 function createHandlerFlowFn<T extends Trigger, E extends Env, R extends any>(
@@ -160,7 +170,7 @@ function createHandlerFlowFn<T extends Trigger, E extends Env, R extends any>(
 		const parentContext = spanContext || api_context.active()
 		const result = tracer.startActiveSpan(name, options, parentContext, async (span) => {
 			try {
-				const result = await handlerFn(instrumentedTrigger, proxiedEnv, proxiedCtx)
+				const result = await handlerFn(instrumentedTrigger, proxiedEnv, proxiedCtx as ExecutionContext)
 
 				if (instrumentation.getAttributesFromResult) {
 					const attributes = instrumentation.getAttributesFromResult(result)
@@ -194,7 +204,7 @@ function createHandlerProxy<T extends Trigger, E extends Env, R extends OrPromis
 	initialiser: Initialiser,
 	instrumentation: HandlerInstrumentation<T, R>,
 ): HandlerFn<T, E, R> {
-	return (trigger: T, env: E, ctx: ExecutionContext): ReturnType<HandlerFn<T, E, R>> => {
+	return (trigger: T, env: E, ctx: ExecutionContext | DurableObjectState): ReturnType<HandlerFn<T, E, R>> => {
 		const config = initialiser(env, trigger)
 		const context = setConfig(config)
 

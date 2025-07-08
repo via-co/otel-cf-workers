@@ -2,7 +2,7 @@ import { trace } from '@opentelemetry/api'
 import { WorkerTracer } from '../tracer.js'
 import { passthroughGet, wrap } from '../wrap.js'
 
-type ContextAndTracker = { ctx: ExecutionContext; tracker: PromiseTracker }
+type ContextAndTracker = { ctx: ExecutionContext | DurableObjectState; tracker: PromiseTracker }
 type WaitUntilFn = ExecutionContext['waitUntil']
 
 export class PromiseTracker {
@@ -21,7 +21,11 @@ export class PromiseTracker {
 	}
 }
 
-function createWaitUntil(fn: WaitUntilFn, context: ExecutionContext, tracker: PromiseTracker): WaitUntilFn {
+function createWaitUntil(
+	fn: WaitUntilFn,
+	context: ExecutionContext | DurableObjectState,
+	tracker: PromiseTracker,
+): WaitUntilFn {
 	const handler: ProxyHandler<WaitUntilFn> = {
 		apply(target, _thisArg, argArray) {
 			tracker.track(argArray[0])
@@ -31,7 +35,7 @@ function createWaitUntil(fn: WaitUntilFn, context: ExecutionContext, tracker: Pr
 	return wrap(fn, handler)
 }
 
-export function proxyExecutionContext(context: ExecutionContext): ContextAndTracker {
+export function proxyExecutionContext(context: ExecutionContext | DurableObjectState): ContextAndTracker {
 	const tracker = new PromiseTracker()
 	const ctx = new Proxy(context, {
 		get(target, prop) {

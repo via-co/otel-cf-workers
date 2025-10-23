@@ -15,6 +15,7 @@ import * as versions from '../versions.json'
 import { createEmailHandler } from './instrumentation/email.js'
 import { createPageHandler, ExportedSvelteEventHandler } from './instrumentation/page.js'
 import { createEntrypointHandler } from './instrumentation/entrypoint.js'
+import { createDoMethodHandler } from './instrumentation/do-class.js'
 
 type FetchHandler = ExportedHandlerFetchHandler<unknown, unknown>
 type ScheduledHandler = ExportedHandlerScheduledHandler<unknown>
@@ -25,6 +26,7 @@ export type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceCo
 export type ConfigurationOption = TraceConfig | ResolveConfigFn
 
 export { InstrumentedEntrypoint } from './instrumentation/entrypoint.js'
+export { InstrumentedDurableObject } from './instrumentation/do-class.js'
 
 export function isRequest(trigger: Trigger): trigger is Request {
 	return trigger instanceof Request
@@ -95,6 +97,11 @@ function createInitialiser(config: ConfigurationOption): Initialiser {
 export function instrumentEntrypoint(config: ConfigurationOption): MethodDecorator {
 	const initialiser = createInitialiser(config)
 	return createEntrypointHandler(initialiser)
+}
+
+export function instrumentDOClassMetadata(config: ConfigurationOption): MethodDecorator {
+	const initialiser = createInitialiser(config)
+	return createDoMethodHandler(initialiser)
 }
 
 export function instrumentPage(

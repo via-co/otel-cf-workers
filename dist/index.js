@@ -1,5 +1,5 @@
 // src/buffer.ts
-import { Buffer } from "node:buffer";
+import { Buffer } from "buffer";
 globalThis.Buffer = Buffer;
 
 // src/sampling.ts
@@ -32,7 +32,7 @@ function createSampler(conf) {
 }
 
 // src/sdk.ts
-import { propagation as propagation5 } from "@opentelemetry/api";
+import { propagation as propagation6 } from "@opentelemetry/api";
 import { Resource } from "@opentelemetry/resources";
 
 // src/config.ts
@@ -416,8 +416,8 @@ import { context as context2, trace as trace3 } from "@opentelemetry/api";
 
 // src/context.ts
 import { ROOT_CONTEXT } from "@opentelemetry/api";
-import { AsyncLocalStorage } from "node:async_hooks";
-import { EventEmitter } from "node:events";
+import { AsyncLocalStorage } from "async_hooks";
+import { EventEmitter } from "events";
 var ADD_LISTENER_METHODS = [
   "addListener",
   "on",
@@ -2272,7 +2272,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.57";
+var _microlabs_otel_cf_workers = "1.0.0-fp.60";
 var node = "22.14.0";
 
 // src/instrumentation/email.ts
@@ -2507,6 +2507,95 @@ function createEntrypointHandler(initialiser) {
   return decorator;
 }
 
+// src/instrumentation/do-class.ts
+import { DurableObject } from "cloudflare:workers";
+import { propagation as propagation5, context as api_context10, trace as trace18, SpanKind as SpanKind16 } from "@opentelemetry/api";
+import { SemanticAttributes as SemanticAttributes10 } from "@opentelemetry/semantic-conventions";
+var traceIdSymbol4 = Symbol("traceId");
+var InstrumentedDurableObject = class extends DurableObject {
+  metadata = {};
+  static async getInstance(doNamespace, key) {
+    if (!key) {
+      throw new Error("DO identifier cannot be null or undefined.");
+    }
+    const id = doNamespace.idFromName(key);
+    const stub = doNamespace.get(id);
+    const metadata = {};
+    propagation5.inject(api_context10.active(), metadata, {
+      set: (h, k, v) => h[k] = typeof v === "string" ? v : String(v)
+    });
+    await stub.setMetadata(metadata);
+    return stub;
+  }
+  async setMetadata(metadata) {
+    if (Object.keys(this.metadata).length === 0) {
+      this.metadata = metadata;
+    }
+  }
+};
+function getParentContextFromDO(workerConfig, metadata) {
+  if (workerConfig === void 0) {
+    return api_context10.active();
+  }
+  const acceptTraceContext = workerConfig.handlers.fetch.acceptTraceContext ?? true;
+  return acceptTraceContext && !!metadata ? getParentContextFromMetadata(metadata ?? {}) : api_context10.active();
+}
+function createDoMethodHandler(initialiser) {
+  const decorator = (target, propertyKey, descriptor) => {
+    const original = descriptor.value;
+    descriptor.value = async function(...args) {
+      const originalRef = this;
+      const orig_env = originalRef.env;
+      const orig_ctx = originalRef.ctx;
+      const config = initialiser(orig_env, this);
+      const env = instrumentEnv(orig_env);
+      const { tracker } = proxyExecutionContext(orig_ctx);
+      const context3 = setConfig(config);
+      try {
+        originalRef.env = env;
+        const metadata = originalRef["metadata"] ?? {};
+        const executeEntrypointHandler = () => {
+          const spanContext = getParentContextFromDO(config, metadata);
+          const tracer2 = trace18.getTracer("doClassHandler");
+          const options = {
+            attributes: {
+              [SemanticAttributes10.FAAS_TRIGGER]: "do-rpc",
+              "rpc.function.name": propertyKey
+            },
+            kind: SpanKind16.SERVER
+          };
+          const promise = tracer2.startActiveSpan(
+            `DO RPC ${target.constructor.name}.${propertyKey}`,
+            options,
+            spanContext,
+            async (span) => {
+              const traceId = span.spanContext().traceId;
+              api_context10.active().setValue(traceIdSymbol4, traceId);
+              try {
+                const result = await original.apply(originalRef, args);
+                span.end();
+                return result;
+              } catch (error) {
+                span.recordException(error);
+                span.end();
+                throw error;
+              }
+            }
+          );
+          return promise;
+        };
+        return await api_context10.with(context3, executeEntrypointHandler);
+      } catch (error) {
+        throw error;
+      } finally {
+        orig_ctx.waitUntil(exportSpans(tracker));
+      }
+    };
+    return descriptor;
+  };
+  return decorator;
+}
+
 // src/sdk.ts
 function isRequest(trigger) {
   return trigger instanceof Request;
@@ -2545,7 +2634,7 @@ function init(config) {
     if (config.instrumentation.instrumentGlobalFetch) {
       instrumentGlobalFetch();
     }
-    propagation5.setGlobalPropagator(config.propagator);
+    propagation6.setGlobalPropagator(config.propagator);
     const resource = createResource(config);
     const provider = new WorkerTracerProvider(config.spanProcessors, resource);
     provider.register();
@@ -2570,6 +2659,10 @@ function createInitialiser(config) {
 function instrumentEntrypoint(config) {
   const initialiser = createInitialiser(config);
   return createEntrypointHandler(initialiser);
+}
+function instrumentDOClassMetadata(config) {
+  const initialiser = createInitialiser(config);
+  return createDoMethodHandler(initialiser);
 }
 function instrumentPage(eventHandler, config) {
   const initialiser = createInitialiser(config);
@@ -2646,6 +2739,7 @@ var MultiSpanExporterAsync = class {
 };
 export {
   BatchTraceSpanProcessor,
+  InstrumentedDurableObject,
   InstrumentedEntrypoint,
   MultiSpanExporter,
   MultiSpanExporterAsync,
@@ -2655,6 +2749,7 @@ export {
   createSampler,
   instrument,
   instrumentDO,
+  instrumentDOClassMetadata,
   instrumentEntrypoint,
   instrumentPage,
   isAlarm,

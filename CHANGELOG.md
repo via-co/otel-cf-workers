@@ -1,5 +1,15 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.60
+
+### Minor Changes
+
+- e2df5a5: Remove CommonJS support
+
+### Patch Changes
+
+- Add support for durable object class implementation
+
 ## 1.0.0-fp.57
 
 ### Patch Changes

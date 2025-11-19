@@ -1,4 +1,3 @@
-import { DurableObject } from 'cloudflare:workers'
 import { Initialiser, setConfig } from '../config'
 import {
 	Attributes,
@@ -17,6 +16,7 @@ import { getParentContextFromMetadata } from './entrypoint'
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
 import { ResolvedTraceConfig } from '../types'
 import { instrumentState } from './do'
+import { DurableObject } from 'cloudflare:workers'
 
 const traceIdSymbol = Symbol('traceId')
 
@@ -48,12 +48,12 @@ export abstract class InstrumentedDurableObject<Env extends Record<string, unkno
 	private _metadata: Record<string, unknown> = {}
 	private _logger: Logger
 	private _instrumentedCtx: DurableObjectState
-	private _instrumentedEnv: Env
+	protected _instrumentedEnv: Env
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
 		this._instrumentedCtx = instrumentState(ctx)
-		// @ts-expect-error we just need binging
+		// @ts-expect-error we just need binding
 		this._instrumentedEnv = instrumentEnv(env)
 		this._logger = new Logger()
 	}
@@ -81,13 +81,6 @@ export abstract class InstrumentedDurableObject<Env extends Record<string, unkno
 			set: (h, k, v) => (h[k] = typeof v === 'string' ? v : String(v)),
 		})
 		return metadata
-	}
-
-	protected doContext<DOContext>(): DOContext {
-		return {
-			env: this._instrumentedEnv,
-			logger: this._logger,
-		} as DOContext
 	}
 
 	protected get logger() {
@@ -147,6 +140,12 @@ export function createDoMethodHandler(initialiser: Initialiser): MethodDecorator
 				const metadata = originalRef['metadata']
 				originalRef['metadata'] = undefined
 				const executeEntrypointHandler = (): Promise<unknown> => {
+					if (propertyKey.startsWith('_')) {
+						if (!!metadata) {
+							originalRef['_logger']['rootSpan'] = trace.getActiveSpan()
+						}
+						return original.apply(originalRef, args)
+					}
 					const spanContext = getParentContextFromDO(config, metadata)
 					const tracer = trace.getTracer('doClassHandler')
 					const options: SpanOptions = {

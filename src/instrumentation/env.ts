@@ -5,6 +5,7 @@ import { instrumentQueueSender } from './queue.js'
 import { instrumentServiceBinding } from './service.js'
 import { instrumentD1 } from './d1'
 import { instrumentAnalyticsEngineDataset } from './analytics-engine.js'
+import { instrumentVectorize } from './vectorize.js'
 
 const isJSRPC = (item?: unknown): item is Service => {
 	// @ts-expect-error The point of RPC types is to block non-existent properties, but that's the goal here
@@ -39,11 +40,14 @@ const isD1Database = (item?: unknown): item is D1Database => {
 	return !!(item as D1Database)?.exec && !!(item as D1Database)?.prepare
 }
 
+const isVectorize = (item?: unknown): item is Vectorize => {
+	return !!(item as Vectorize)?.upsert && !!(item as Vectorize)?.getByIds
+}
+
 const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> => {
 	const envHandler: ProxyHandler<Record<string, unknown>> = {
 		get: (target, prop, receiver) => {
 			const item = Reflect.get(target, prop, receiver)
-			console.log(item?.constructor?.name)
 			if (!isProxyable(item)) {
 				return item
 			}
@@ -53,8 +57,6 @@ const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> =>
 				return instrumentKV(item, String(prop))
 			} else if (isQueue(item)) {
 				return instrumentQueueSender(item, String(prop))
-				// } else if (isDurableObject(item)) {
-				// 	return instrumentDOBinding(item, String(prop))
 			} else if (isVersionMetadata(item)) {
 				// we do not need to log accesses to the metadata
 				return item
@@ -62,6 +64,8 @@ const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> =>
 				return instrumentAnalyticsEngineDataset(item, String(prop))
 			} else if (isD1Database(item)) {
 				return instrumentD1(item, String(prop))
+			} else if (isVectorize(item)) {
+				return instrumentVectorize(item, String(prop))
 			} else {
 				return item
 			}

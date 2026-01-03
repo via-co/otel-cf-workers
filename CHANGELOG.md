@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.61
+
+### Minor Changes
+
+- 0c62b19: Add support for vectorize and improve DO support
+
 ## 1.0.0-fp.60
 
 ### Minor Changes

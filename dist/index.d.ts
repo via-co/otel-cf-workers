@@ -1,5 +1,5 @@
 import { SpanExporter, ReadableSpan, Sampler, SpanProcessor, TimedEvent } from '@opentelemetry/sdk-trace-base';
-import { TextMapPropagator, Span, SpanKind, Attributes, SpanStatus, HrTime, Link, SpanContext, TimeInput, AttributeValue, Exception, Context } from '@opentelemetry/api';
+import { TextMapPropagator, Attributes, Span, SpanKind, SpanStatus, HrTime, Link, SpanContext, TimeInput, AttributeValue, Exception, Context } from '@opentelemetry/api';
 import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base';
 import { ExportResult, InstrumentationLibrary } from '@opentelemetry/core';
 import * as cookie from 'cookie';
@@ -289,10 +289,26 @@ declare abstract class InstrumentedEntrypoint<E extends Record<string, unknown>>
     protected entrypointContext<EntrypointContext>(): EntrypointContext;
 }
 
+declare class Logger {
+    private rootSpan;
+    constructor();
+    exception(err: Error, msg?: string): void;
+    log(attributes: Attributes): void;
+    addProperties(attributes: Attributes): void;
+}
 declare abstract class InstrumentedDurableObject<Env extends Record<string, unknown>> extends DurableObject$1<Env> {
-    private metadata;
+    private _metadata;
+    private _logger;
+    private _instrumentedCtx;
+    protected _instrumentedEnv: Env;
+    constructor(ctx: DurableObjectState, env: Env);
     static getInstance<T extends InstrumentedDurableObject<Record<string, unknown>>>(doNamespace: DurableObjectNamespace<T>, key: string): Promise<DurableObjectStub<T>>;
-    setMetadata(metadata: Record<string, unknown>): Promise<void>;
+    protected _getCurrentTraceContext(): Record<string, unknown>;
+    protected get logger(): Logger;
+    protected get metadata(): Record<string, unknown>;
+    private set metadata(value);
+    protected get storage(): DurableObjectStorage;
+    _setOpts(metadata: Record<string, unknown>): Promise<void>;
 }
 
 type ResolveConfigFn<Env = any> = (env: Env, trigger: Trigger) => TraceConfig;

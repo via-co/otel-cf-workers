@@ -13,13 +13,12 @@ import {
 } from '@opentelemetry/api'
 import {
 	hrTimeDuration,
-	InstrumentationLibrary,
-	isAttributeKey,
+	InstrumentationScope,
 	isAttributeValue,
 	isTimeInput,
 	sanitizeAttributes,
 } from '@opentelemetry/core'
-import { IResource } from '@opentelemetry/resources'
+import { Resource } from '@opentelemetry/resources'
 import { ReadableSpan, TimedEvent } from '@opentelemetry/sdk-trace-base'
 import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
 
@@ -29,7 +28,7 @@ interface SpanInit {
 	attributes: unknown
 	name: string
 	onEnd: OnSpanEnd
-	resource: IResource
+	resource: Resource
 	spanContext: SpanContext
 	links?: Link[]
 	parentSpanId?: string
@@ -93,8 +92,8 @@ export class SpanImpl implements Span, ReadableSpan {
 	readonly startTime: HrTime
 	readonly events: TimedEvent[] = []
 	readonly links: Link[]
-	readonly resource: IResource
-	instrumentationLibrary: InstrumentationLibrary = { name: '@microlabs/otel-cf-workers' }
+	readonly resource: Resource
+	instrumentationScope: InstrumentationScope = { name: '@microlabs/otel-cf-workers' }
 	private _ended: boolean = false
 	private _droppedAttributesCount: number = 0
 	private _droppedEventsCount: number = 0
@@ -126,7 +125,7 @@ export class SpanImpl implements Span, ReadableSpan {
 	}
 
 	setAttribute(key: string, value?: AttributeValue): this {
-		if (isAttributeKey(key) && isAttributeValue(value)) {
+		if (key.length > 0 && isAttributeValue(value)) {
 			this.attributes[key] = value
 		}
 		return this

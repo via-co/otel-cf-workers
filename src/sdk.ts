@@ -1,5 +1,5 @@
 import { propagation } from '@opentelemetry/api'
-import { Resource } from '@opentelemetry/resources'
+import { Resource, resourceFromAttributes } from '@opentelemetry/resources'
 
 import { Initialiser, parseConfig } from './config.js'
 import { WorkerTracerProvider } from './provider.js'
@@ -51,12 +51,12 @@ const createResource = (config: ResolvedTraceConfig): Resource => {
 		'telemetry.sdk.version': versions['@microlabs/otel-cf-workers'],
 		'telemetry.sdk.build.node_version': versions['node'],
 	}
-	const serviceResource = new Resource({
+	const serviceResource = resourceFromAttributes({
 		'service.name': config.service.name,
 		'service.namespace': config.service.namespace,
 		'service.version': config.service.version,
 	})
-	const resource = new Resource(workerResourceAttrs)
+	const resource = resourceFromAttributes(workerResourceAttrs)
 	return resource.merge(serviceResource)
 }
 

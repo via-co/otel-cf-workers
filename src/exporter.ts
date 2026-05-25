@@ -1,7 +1,7 @@
-import { createExportTraceServiceRequest } from '@opentelemetry/otlp-transformer'
-import { ExportServiceError, OTLPExporterError } from '@opentelemetry/otlp-exporter-base'
+import { JsonTraceSerializer } from '@opentelemetry/otlp-transformer'
+import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base'
 import { ExportResult, ExportResultCode } from '@opentelemetry/core'
-import { SpanExporter } from '@opentelemetry/sdk-trace-base'
+import { ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base'
 import { unwrap } from './wrap.js'
 
 export interface OTLPExporterConfig {
@@ -22,17 +22,17 @@ export class OTLPExporter implements SpanExporter {
 		this.headers = Object.assign({}, defaultHeaders, config.headers)
 	}
 
-	export(items: any[], resultCallback: (result: ExportResult) => void): void {
+	export(items: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
 		this._export(items)
 			.then(() => {
 				resultCallback({ code: ExportResultCode.SUCCESS })
 			})
-			.catch((error: ExportServiceError) => {
+			.catch((error: OTLPExporterError) => {
 				resultCallback({ code: ExportResultCode.FAILED, error })
 			})
 	}
 
-	private _export(items: any[]): Promise<unknown> {
+	private _export(items: ReadableSpan[]): Promise<unknown> {
 		return new Promise<void>((resolve, reject) => {
 			try {
 				this.send(items, resolve, reject)
@@ -42,12 +42,8 @@ export class OTLPExporter implements SpanExporter {
 		})
 	}
 
-	send(items: any[], onSuccess: () => void, onError: (error: OTLPExporterError) => void): void {
-		const exportMessage = createExportTraceServiceRequest(items, {
-			useHex: true,
-			useLongBits: false,
-		})
-		const body = JSON.stringify(exportMessage)
+	send(items: ReadableSpan[], onSuccess: () => void, onError: (error: OTLPExporterError) => void): void {
+		const body = JsonTraceSerializer.serializeRequest(items)
 		const params: RequestInit = {
 			method: 'POST',
 			headers: this.headers,

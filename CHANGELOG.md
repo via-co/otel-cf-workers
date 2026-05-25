@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.62
+
+### Patch Changes
+
+- c952bec: Add support for email service send binding
+
 ## 1.0.0-fp.61
 
 ### Minor Changes

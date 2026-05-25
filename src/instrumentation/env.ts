@@ -1,11 +1,11 @@
 import { isProxyable, wrap } from '../wrap.js'
-import { instrumentDOBinding } from './do.js'
 import { instrumentKV } from './kv.js'
 import { instrumentQueueSender } from './queue.js'
 import { instrumentServiceBinding } from './service.js'
 import { instrumentD1 } from './d1'
 import { instrumentAnalyticsEngineDataset } from './analytics-engine.js'
 import { instrumentVectorize } from './vectorize.js'
+import { instrumentEmailServiceSend } from './send-email.js'
 
 const isJSRPC = (item?: unknown): item is Service => {
 	// @ts-expect-error The point of RPC types is to block non-existent properties, but that's the goal here
@@ -18,10 +18,6 @@ const isKVNamespace = (item?: unknown): item is KVNamespace => {
 
 const isQueue = (item?: unknown): item is Queue<unknown> => {
 	return !isJSRPC(item) && !!(item as Queue<unknown>)?.sendBatch
-}
-
-const isDurableObject = (item?: unknown): item is DurableObjectNamespace => {
-	return !isJSRPC(item) && !!(item as DurableObjectNamespace)?.idFromName
 }
 
 export const isVersionMetadata = (item?: unknown): item is WorkerVersionMetadata => {
@@ -42,6 +38,10 @@ const isD1Database = (item?: unknown): item is D1Database => {
 
 const isVectorize = (item?: unknown): item is Vectorize => {
 	return !!(item as Vectorize)?.upsert && !!(item as Vectorize)?.getByIds
+}
+
+const isSendEmail = (item?: unknown): item is SendEmail => {
+	return !isJSRPC(item) && !isQueue(item) && typeof (item as SendEmail)?.send === 'function'
 }
 
 const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> => {
@@ -66,6 +66,8 @@ const instrumentEnv = (env: Record<string, unknown>): Record<string, unknown> =>
 				return instrumentD1(item, String(prop))
 			} else if (isVectorize(item)) {
 				return instrumentVectorize(item, String(prop))
+			} else if (isSendEmail(item)) {
+				return instrumentEmailServiceSend(item, String(prop))
 			} else {
 				return item
 			}

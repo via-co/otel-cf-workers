@@ -301,7 +301,7 @@ Bindings:
 - [x] Analytics Engine
 - [ ] Browser Rendering
 - [ ] Workers AI
-- [ ] Email Sending
+- [x] Email Sending
 - [ ] mTLS
 - [ ] Vectorize
 - [ ] Hyperdrive

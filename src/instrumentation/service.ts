@@ -7,11 +7,10 @@ import {
 	SpanStatusCode,
 	trace,
 } from '@opentelemetry/api'
-import { ResolvedTraceConfig } from '../../dist/index.mjs'
 import { unwrap, wrap } from '../wrap.js'
 import { FetcherConfig, instrumentClientFetch } from './fetch.js'
 import { getActiveConfig } from '../config.js'
-import { should } from 'vitest'
+import { ResolvedTraceConfig } from '../types.js'
 
 export function instrumentServiceBinding(fetcher: Fetcher, envName: string): Fetcher {
 	const fetcherHandler: ProxyHandler<Fetcher> = {

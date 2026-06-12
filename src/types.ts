@@ -1,4 +1,4 @@
-import { TextMapPropagator } from '@opentelemetry/api'
+import { Attributes, AttributeValue, Span, SpanStatusCode, TextMapPropagator, trace } from '@opentelemetry/api'
 import { ReadableSpan, Sampler, SpanExporter, SpanProcessor } from '@opentelemetry/sdk-trace-base'
 import { OTLPExporterConfig } from './exporter.js'
 import { FetchHandlerConfig, FetcherConfig } from './instrumentation/fetch.js'
@@ -81,3 +81,31 @@ export type Trigger =
 	| 'do-alarm'
 	| ForwardableEmailMessage
 	| PropertyDescriptor
+
+export class Logger {
+	private rootSpan: Span | undefined
+	constructor() {
+		this.rootSpan = trace.getActiveSpan()
+	}
+	exception(err: Error, msg?: string): void {
+		const span = this.rootSpan ?? trace.getActiveSpan()
+		if (span) {
+			span?.recordException(err)
+			span.setStatus({ code: SpanStatusCode.ERROR, message: msg })
+		} else {
+			console.error(msg ?? 'General error', err)
+		}
+	}
+	log(attributes: Attributes, eventName = 'log'): void {
+		const span = this.rootSpan ?? trace.getActiveSpan()
+		span?.addEvent(eventName, attributes)
+	}
+	addProperties(attributes: Attributes): void {
+		const span = this.rootSpan ?? trace.getActiveSpan()
+		span?.setAttributes(attributes)
+	}
+	addProperty(key: string, value: AttributeValue): void {
+		const span = this.rootSpan ?? trace.getActiveSpan()
+		span?.setAttribute(key, value)
+	}
+}

@@ -1,48 +1,14 @@
 import { Initialiser, setConfig } from '../config'
-import {
-	Attributes,
-	propagation,
-	context as api_context,
-	trace,
-	SpanOptions,
-	SpanKind,
-	Exception,
-	Span,
-	SpanStatusCode,
-} from '@opentelemetry/api'
+import { propagation, context as api_context, trace, SpanOptions, SpanKind, Exception } from '@opentelemetry/api'
 import { instrumentEnv } from './env'
 import { exportSpans, proxyExecutionContext } from './common'
 import { getParentContextFromMetadata } from './entrypoint'
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
-import { ResolvedTraceConfig } from '../types'
+import { Logger, ResolvedTraceConfig } from '../types'
 import { instrumentState } from './do'
 import { DurableObject } from 'cloudflare:workers'
+import { ATTR_FAAS_TRIGGER } from '@opentelemetry/semantic-conventions/incubating'
 
 const traceIdSymbol = Symbol('traceId')
-
-class Logger {
-	private rootSpan: Span | undefined
-	constructor() {
-		this.rootSpan = trace.getActiveSpan()
-	}
-	exception(err: Error, msg?: string): void {
-		const span = this.rootSpan ?? trace.getActiveSpan()
-		if (span) {
-			span?.recordException(err)
-			span.setStatus({ code: SpanStatusCode.ERROR, message: msg })
-		} else {
-			console.error(msg ?? 'General error', err)
-		}
-	}
-	log(attributes: Attributes): void {
-		const span = this.rootSpan ?? trace.getActiveSpan()
-		span?.addEvent('log', attributes)
-	}
-	addProperties(attributes: Attributes): void {
-		const span = this.rootSpan ?? trace.getActiveSpan()
-		span?.setAttributes(attributes)
-	}
-}
 
 export abstract class InstrumentedDurableObject<Env extends Record<string, unknown>> extends DurableObject<Env> {
 	private _metadata: Record<string, unknown> = {}
@@ -150,7 +116,7 @@ export function createDoMethodHandler(initialiser: Initialiser): MethodDecorator
 					const tracer = trace.getTracer('doClassHandler')
 					const options: SpanOptions = {
 						attributes: {
-							[SemanticAttributes.FAAS_TRIGGER]: 'do-rpc',
+							[ATTR_FAAS_TRIGGER]: 'do-rpc',
 							'rpc.function.name': propertyKey,
 						},
 						kind: SpanKind.SERVER,

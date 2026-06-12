@@ -21,7 +21,11 @@ import {
 } from '@opentelemetry/core'
 import { IResource } from '@opentelemetry/resources'
 import { ReadableSpan, TimedEvent } from '@opentelemetry/sdk-trace-base'
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
+import {
+	ATTR_EXCEPTION_MESSAGE,
+	ATTR_EXCEPTION_STACKTRACE,
+	ATTR_EXCEPTION_TYPE,
+} from '@opentelemetry/semantic-conventions'
 
 type OnSpanEnd = (span: Span) => void
 
@@ -40,18 +44,18 @@ interface SpanInit {
 function transformExceptionAttributes(exception: Exception): Attributes {
 	const attributes: Attributes = {}
 	if (typeof exception === 'string') {
-		attributes[SemanticAttributes.EXCEPTION_MESSAGE] = exception
+		attributes[ATTR_EXCEPTION_MESSAGE] = exception
 	} else {
 		if (exception.code) {
-			attributes[SemanticAttributes.EXCEPTION_TYPE] = exception.code.toString()
+			attributes[ATTR_EXCEPTION_TYPE] = exception.code.toString()
 		} else if (exception.name) {
-			attributes[SemanticAttributes.EXCEPTION_TYPE] = exception.name
+			attributes[ATTR_EXCEPTION_TYPE] = exception.name
 		}
 		if (exception.message) {
-			attributes[SemanticAttributes.EXCEPTION_MESSAGE] = exception.message
+			attributes[ATTR_EXCEPTION_MESSAGE] = exception.message
 		}
 		if (exception.stack) {
-			attributes[SemanticAttributes.EXCEPTION_STACKTRACE] = exception.stack
+			attributes[ATTR_EXCEPTION_STACKTRACE] = exception.stack
 		}
 	}
 	return attributes

@@ -10,10 +10,10 @@ import {
 import { Initialiser, setConfig } from '../config'
 import { exportSpans, proxyExecutionContext } from './common'
 import { instrumentEnv } from './env'
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
 import { WorkerEntrypoint } from 'cloudflare:workers'
 import { instrumentClientFetch } from './fetch'
 import { ResolvedTraceConfig } from '../types'
+import { ATTR_FAAS_TRIGGER } from '@opentelemetry/semantic-conventions/incubating'
 
 const traceIdSymbol = Symbol('traceId')
 
@@ -96,7 +96,7 @@ export function createEntrypointHandler<E extends Record<string, unknown>>(initi
 					const tracer = trace.getTracer('rpcHandler')
 					const options: SpanOptions = {
 						attributes: {
-							[SemanticAttributes.FAAS_TRIGGER]: 'rpc',
+							[ATTR_FAAS_TRIGGER]: 'rpc',
 							'rpc.function.name': propertyKey,
 						},
 						kind: SpanKind.SERVER,

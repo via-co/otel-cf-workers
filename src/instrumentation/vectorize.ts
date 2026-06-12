@@ -1,5 +1,5 @@
 import { SpanKind, SpanOptions, trace } from '@opentelemetry/api'
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions'
+import { ATTR_DB_NAMESPACE, ATTR_DB_OPERATION_NAME, ATTR_DB_SYSTEM_NAME } from '@opentelemetry/semantic-conventions'
 import { wrap } from '../wrap'
 
 export function instrumentVectorize(v: Vectorize, name: string): Vectorize {
@@ -20,9 +20,9 @@ function instrumentVectorizeFn(fn: Function, name: string, operation: string) {
 		apply: (target, thisArg, argArray) => {
 			const attributes = {
 				binding_type: 'VectorDB',
-				[SemanticAttributes.DB_NAME]: name,
-				[SemanticAttributes.DB_SYSTEM]: 'vectorize',
-				[SemanticAttributes.DB_OPERATION]: operation,
+				[ATTR_DB_NAMESPACE]: name,
+				[ATTR_DB_SYSTEM_NAME]: 'vectorize',
+				[ATTR_DB_OPERATION_NAME]: operation,
 			}
 			const options: SpanOptions = {
 				kind: SpanKind.CLIENT,

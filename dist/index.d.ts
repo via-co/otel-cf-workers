@@ -1,5 +1,5 @@
 import { SpanExporter, ReadableSpan, Sampler, SpanProcessor, TimedEvent } from '@opentelemetry/sdk-trace-base';
-import { TextMapPropagator, Attributes, Span, SpanKind, SpanStatus, HrTime, Link, SpanContext, TimeInput, AttributeValue, Exception, Context } from '@opentelemetry/api';
+import { TextMapPropagator, Attributes, AttributeValue, Span, SpanKind, SpanStatus, HrTime, Link, SpanContext, TimeInput, Exception, Context } from '@opentelemetry/api';
 import { OTLPExporterError } from '@opentelemetry/otlp-exporter-base';
 import { ExportResult, InstrumentationLibrary } from '@opentelemetry/core';
 import * as cookie from 'cookie';
@@ -89,6 +89,14 @@ interface DOConstructorTrigger {
     name?: string;
 }
 type Trigger = Request | MessageBatch | ScheduledController | DOConstructorTrigger | 'do-alarm' | ForwardableEmailMessage | PropertyDescriptor;
+declare class Logger {
+    private rootSpan;
+    constructor();
+    exception(err: Error, msg?: string): void;
+    log(attributes: Attributes, eventName?: string): void;
+    addProperties(attributes: Attributes): void;
+    addProperty(key: string, value: AttributeValue): void;
+}
 
 interface LocalTrace {
     readonly traceId: string;
@@ -289,13 +297,6 @@ declare abstract class InstrumentedEntrypoint<E extends Record<string, unknown>>
     protected entrypointContext<EntrypointContext>(): EntrypointContext;
 }
 
-declare class Logger {
-    private rootSpan;
-    constructor();
-    exception(err: Error, msg?: string): void;
-    log(attributes: Attributes): void;
-    addProperties(attributes: Attributes): void;
-}
 declare abstract class InstrumentedDurableObject<Env extends Record<string, unknown>> extends DurableObject$1<Env> {
     private _metadata;
     private _logger;
@@ -404,4 +405,4 @@ declare class BatchTraceSpanProcessor implements SpanProcessor {
 
 declare function withNextSpan(attrs: Attributes): void;
 
-export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, InstrumentedDurableObject, InstrumentedEntrypoint, type LocalTrace, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentDOClassMetadata, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };
+export { BatchTraceSpanProcessor, type ConfigurationOption, type DOConstructorTrigger, type ExporterConfig, type HandlerConfig, type InstrumentationOptions, InstrumentedDurableObject, InstrumentedEntrypoint, type LocalTrace, Logger, MultiSpanExporter, MultiSpanExporterAsync, OTLPExporter, type OTLPExporterConfig, type ParentRatioSamplingConfig, type PostProcessorFn, type ResolveConfigFn, type ResolvedTraceConfig, type SamplingConfig, type ServiceConfig, SpanImpl, type TailSampleFn, type TraceConfig, type Trigger, __unwrappedFetch, createSampler, instrument, instrumentDO, instrumentDOClassMetadata, instrumentEntrypoint, instrumentPage, isAlarm, isHeadSampled, isMessageBatch, isRequest, isRootErrorSpan, isSpanProcessorConfig, multiTailSampler, waitUntilTrace, withNextSpan };

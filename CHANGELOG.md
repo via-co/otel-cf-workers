@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.63
+
+### Patch Changes
+
+- 2fd5ee8: Expose an add property logger function and export it from module
+
 ## 1.0.0-fp.62
 
 ### Patch Changes

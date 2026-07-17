@@ -1,5 +1,11 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.64
+
+### Patch Changes
+
+- 33ed984: Add a proxy for `storage.sql.exec(...)` so that it emits traces with duration for the statement itself
+
 ## 1.0.0-fp.63
 
 ### Patch Changes

@@ -2006,10 +2006,10 @@ function instrumentGlobalCache() {
 }
 
 // src/instrumentation/do.ts
-import { context as api_context5, trace as trace16, SpanKind as SpanKind13, SpanStatusCode as SpanStatusCode7 } from "@opentelemetry/api";
+import { context as api_context5, trace as trace16, SpanKind as SpanKind13, SpanStatusCode as SpanStatusCode8 } from "@opentelemetry/api";
 
 // src/instrumentation/do-storage.ts
-import { SpanKind as SpanKind12, trace as trace15 } from "@opentelemetry/api";
+import { SpanKind as SpanKind12, SpanStatusCode as SpanStatusCode7, trace as trace15 } from "@opentelemetry/api";
 import { ATTR_DB_OPERATION_NAME as ATTR_DB_OPERATION_NAME5, ATTR_DB_QUERY_TEXT as ATTR_DB_QUERY_TEXT4, ATTR_DB_SYSTEM_NAME as ATTR_DB_SYSTEM_NAME5 } from "@opentelemetry/semantic-conventions";
 var dbSystem4 = "Cloudflare DO";
 function isDurableObjectCommonOptions(options) {
@@ -2183,9 +2183,70 @@ function instrumentStorageFn(fn, operation) {
   };
   return wrap(fn, fnHandler);
 }
+function sqlOperation(query) {
+  return query.match(/\b(SELECT|INSERT|UPDATE|DELETE)\b/i)?.[1]?.toUpperCase();
+}
+function sqlTable(query, verb) {
+  const regex = verb === "UPDATE" ? /\bUPDATE\s+["`']?(?<table>\w+)/i : /\b(?:FROM|INTO)\s+["`']?(?<table>\w+)/i;
+  return query.match(regex)?.groups?.["table"];
+}
+function sqlSpanName(query) {
+  const verb = sqlOperation(query);
+  if (!verb) {
+    return void 0;
+  }
+  const table = sqlTable(query, verb);
+  return table ? `db.${verb.toLowerCase()}.${table.toLowerCase()}` : void 0;
+}
+function instrumentSqlExec(exec, rawSql) {
+  const tracer2 = trace15.getTracer("do_storage");
+  return ((query, ...params) => {
+    const active = trace15.getActiveSpan();
+    if (!active || !active.isRecording()) {
+      return exec.call(rawSql, query, ...params);
+    }
+    const options = {
+      kind: SpanKind12.CLIENT,
+      attributes: {
+        [ATTR_DB_SYSTEM_NAME5]: dbSystem4,
+        [ATTR_DB_OPERATION_NAME5]: sqlOperation(query),
+        [ATTR_DB_QUERY_TEXT4]: query,
+        "db.statement.args": JSON.stringify(params)
+      }
+    };
+    return tracer2.startActiveSpan(`Durable Object Storage ${sqlSpanName(query) ?? "sql"}`, options, (span) => {
+      try {
+        return exec.call(rawSql, query, ...params);
+      } catch (error) {
+        span.recordException(error);
+        span.setStatus({
+          code: SpanStatusCode7.ERROR,
+          message: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  });
+}
+function instrumentSql(sql) {
+  const sqlHandler = {
+    get: (target, prop) => {
+      if (prop === "exec") {
+        return instrumentSqlExec(target.exec, target);
+      }
+      return passthroughGet(target, prop);
+    }
+  };
+  return wrap(sql, sqlHandler);
+}
 function instrumentStorage(storage) {
   const storageHandler = {
     get: (target, prop, receiver) => {
+      if (prop === "sql") {
+        return instrumentSql(Reflect.get(target, prop, receiver));
+      }
       const operation = String(prop);
       const fn = Reflect.get(target, prop, receiver);
       return instrumentStorageFn(fn, operation);
@@ -2231,14 +2292,14 @@ function executeDOFetch(fetchFn, request, id) {
     try {
       const response = await fetchFn(request);
       if (response.ok) {
-        span.setStatus({ code: SpanStatusCode7.OK });
+        span.setStatus({ code: SpanStatusCode8.OK });
       }
       span.setAttributes(gatherResponseAttributes(response));
       span.end();
       return response;
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: SpanStatusCode7.ERROR });
+      span.setStatus({ code: SpanStatusCode8.ERROR });
       span.end();
       throw error;
     }
@@ -2258,7 +2319,7 @@ function executeDOAlarm(alarmFn, id) {
       span.end();
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: SpanStatusCode7.ERROR });
+      span.setStatus({ code: SpanStatusCode8.ERROR });
       span.end();
       throw error;
     }
@@ -2344,7 +2405,7 @@ function instrumentDOClass(doClass, initialiser) {
 }
 
 // src/instrumentation/scheduled.ts
-import { trace as trace17, SpanKind as SpanKind14, context as api_context6, SpanStatusCode as SpanStatusCode8 } from "@opentelemetry/api";
+import { trace as trace17, SpanKind as SpanKind14, context as api_context6, SpanStatusCode as SpanStatusCode9 } from "@opentelemetry/api";
 import {
   ATTR_FAAS_COLDSTART as ATTR_FAAS_COLDSTART2,
   ATTR_FAAS_CRON,
@@ -2374,7 +2435,7 @@ function executeScheduledHandler(scheduledFn, [controller, env, ctx]) {
       await scheduledFn(controller, env, ctx);
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: SpanStatusCode8.ERROR });
+      span.setStatus({ code: SpanStatusCode9.ERROR });
       throw error;
     } finally {
       span.end();
@@ -2404,7 +2465,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.63";
+var _microlabs_otel_cf_workers = "1.0.0-fp.64";
 var node = "22.14.0";
 
 // src/instrumentation/email.ts
@@ -2463,7 +2524,7 @@ async function executeEmailHandler(emailFn, [message, env, ctx]) {
 }
 
 // src/instrumentation/page.ts
-import { SpanKind as SpanKind16, SpanStatusCode as SpanStatusCode9, context as api_context8, trace as trace19 } from "@opentelemetry/api";
+import { SpanKind as SpanKind16, SpanStatusCode as SpanStatusCode10, context as api_context8, trace as trace19 } from "@opentelemetry/api";
 var cold_start4 = true;
 function executePageHandler(pagesFn, [input]) {
   const { event } = input;
@@ -2498,7 +2559,7 @@ function executePageHandler(pagesFn, [input]) {
         return response;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: SpanStatusCode9.ERROR });
+        span.setStatus({ code: SpanStatusCode10.ERROR });
         throw error;
       } finally {
         if (readable.attributes["http.route"]) {

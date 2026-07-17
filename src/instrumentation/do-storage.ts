@@ -1,6 +1,6 @@
-import { Attributes, SpanKind, SpanOptions, trace } from '@opentelemetry/api'
+import { Attributes, SpanKind, SpanOptions, SpanStatusCode, trace } from '@opentelemetry/api'
 import { ATTR_DB_OPERATION_NAME, ATTR_DB_QUERY_TEXT, ATTR_DB_SYSTEM_NAME } from '@opentelemetry/semantic-conventions'
-import { wrap } from '../wrap.js'
+import { passthroughGet, wrap } from '../wrap.js'
 import { Overloads } from './common.js'
 
 type ExtraAttributeFn = (argArray: any[], result: any) => Attributes
@@ -190,9 +190,90 @@ function instrumentStorageFn(fn: Function, operation: string) {
 	return wrap(fn, fnHandler)
 }
 
+/** Extracts the SQL verb (SELECT/INSERT/UPDATE/DELETE) for the `db.operation.name` attribute. */
+function sqlOperation(query: string): string | undefined {
+	return query.match(/\b(SELECT|INSERT|UPDATE|DELETE)\b/i)?.[1]?.toUpperCase()
+}
+
+/** Extracts the target table: `UPDATE <t>`, `INSERT INTO <t>`, `DELETE FROM <t>`, `SELECT … FROM <t>`. */
+function sqlTable(query: string, verb: string): string | undefined {
+	const regex = verb === 'UPDATE' ? /\bUPDATE\s+["`']?(?<table>\w+)/i : /\b(?:FROM|INTO)\s+["`']?(?<table>\w+)/i
+	return query.match(regex)?.groups?.['table']
+}
+
+/** Derives `db.<verb>.<table>` (e.g. `db.insert.hello_pings`) from a statement, or `undefined`. */
+function sqlSpanName(query: string): string | undefined {
+	const verb = sqlOperation(query)
+	if (!verb) {
+		return undefined
+	}
+	const table = sqlTable(query, verb)
+	return table ? `db.${verb.toLowerCase()}.${table.toLowerCase()}` : undefined
+}
+
+/**
+ * Wraps `SqlStorage.exec` so each statement runs inside a CLIENT span carrying the statement text,
+ * operation, args, and wall-clock duration. Unlike the KV-style storage methods (which are proxied by
+ * `instrumentStorageFn`), `sql.exec` is reached via a property get on the `sql` sub-object, so it needs
+ * its own wrapper — this is the call `drizzle-orm/durable-sqlite` issues for every query.
+ */
+function instrumentSqlExec(exec: SqlStorage['exec'], rawSql: SqlStorage): SqlStorage['exec'] {
+	const tracer = trace.getTracer('do_storage')
+	return ((query: string, ...params: unknown[]) => {
+		// Only trace when there is a recording span in context. Statements executed during DO
+		// construction (e.g. migrations run inside blockConcurrencyWhile) have no active span and would
+		// otherwise emit parentless spans. Remove this guard to trace every statement unconditionally.
+		const active = trace.getActiveSpan()
+		if (!active || !active.isRecording()) {
+			return exec.call(rawSql, query, ...params)
+		}
+
+		const options: SpanOptions = {
+			kind: SpanKind.CLIENT,
+			attributes: {
+				[ATTR_DB_SYSTEM_NAME]: dbSystem,
+				[ATTR_DB_OPERATION_NAME]: sqlOperation(query),
+				[ATTR_DB_QUERY_TEXT]: query,
+				'db.statement.args': JSON.stringify(params),
+			},
+		}
+		return tracer.startActiveSpan(`Durable Object Storage ${sqlSpanName(query) ?? 'sql'}`, options, (span) => {
+			try {
+				return exec.call(rawSql, query, ...params)
+			} catch (error) {
+				span.recordException(error as Error)
+				span.setStatus({
+					code: SpanStatusCode.ERROR,
+					message: error instanceof Error ? error.message : String(error),
+				})
+				throw error
+			} finally {
+				span.end()
+			}
+		})
+	}) as SqlStorage['exec']
+}
+
+function instrumentSql(sql: SqlStorage): SqlStorage {
+	const sqlHandler: ProxyHandler<SqlStorage> = {
+		get: (target, prop) => {
+			if (prop === 'exec') {
+				return instrumentSqlExec(target.exec, target)
+			}
+			return passthroughGet(target, prop)
+		},
+	}
+	return wrap(sql, sqlHandler)
+}
+
 export function instrumentStorage(storage: DurableObjectStorage): DurableObjectStorage {
 	const storageHandler: ProxyHandler<DurableObjectStorage> = {
 		get: (target, prop, receiver) => {
+			// The `sql` sub-API is an object, not a method: instrument its `exec` rather than treating it
+			// as a callable like the KV-style storage methods below.
+			if (prop === 'sql') {
+				return instrumentSql(Reflect.get(target, prop, receiver) as SqlStorage)
+			}
 			const operation = String(prop)
 			const fn = Reflect.get(target, prop, receiver)
 			return instrumentStorageFn(fn, operation)

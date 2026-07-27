@@ -8,6 +8,7 @@ import {
 	Context,
 	context as api_context,
 	trace,
+	INVALID_SPAN_CONTEXT,
 } from '@opentelemetry/api'
 import { sanitizeAttributes } from '@opentelemetry/core'
 import { Resource } from '@opentelemetry/resources'
@@ -48,7 +49,16 @@ export class WorkerTracer implements Tracer {
 		const sanitisedAttrs = sanitizeAttributes(options.attributes)
 
 		const config = getActiveConfig()
-		if (!config) throw new Error('Config is undefined. This is a bug in the instrumentation logic')
+		if (!config) {
+			// A span can only be built from an active instrumentation config. Durable Object storage
+			// operations issued during construction (e.g. migrations run inside `blockConcurrencyWhile`)
+			// can execute in a context that carries a leaked recording span but no active config — for
+			// instance when a DO is constructed as a side effect of an instrumented entrypoint/DO RPC call,
+			// where the config lives under a module-local symbol that does not cross the RPC boundary.
+			// Throwing here breaks the DO's input gate; instead degrade to a non-recording span so the
+			// underlying operation still runs, just untraced.
+			return trace.wrapSpanContext(INVALID_SPAN_CONTEXT)
+		}
 
 		const sampler = config.sampling.headSampler
 		const samplingDecision = sampler.shouldSample(context, traceId, name, spanKind, sanitisedAttrs, [])

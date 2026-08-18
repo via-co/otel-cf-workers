@@ -132,7 +132,14 @@ export class BatchTraceSpanProcessor implements SpanProcessor {
 
 	private export(localRootSpanId: string) {
 		const config = getActiveConfig()
-		if (!config) throw new Error('Config is undefined. This is a bug in the instrumentation logic')
+		if (!config) {
+			// Same reasoning as `WorkerTracer.startSpan`: without an active config there is no tail sampler
+			// and no post-processor, so the batch cannot be exported at all. This runs from `onEnd`, which
+			// is typically reached inside a `waitUntil` continuation — a context the config does not always
+			// survive into. Throwing there rejects the pending promise (and breaks a Durable Object's input
+			// gate) for spans that were never exportable anyway, so drop the batch instead.
+			return
+		}
 
 		const { sampling, postProcessor } = config
 		const exportArgs = { exporter: this.exporter, tailSampler: sampling.tailSampler, postProcessor }

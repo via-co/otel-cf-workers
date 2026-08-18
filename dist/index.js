@@ -341,7 +341,9 @@ var BatchTraceSpanProcessor = class {
   }
   export(localRootSpanId) {
     const config = getActiveConfig();
-    if (!config) throw new Error("Config is undefined. This is a bug in the instrumentation logic");
+    if (!config) {
+      return;
+    }
     const { sampling, postProcessor } = config;
     const exportArgs = { exporter: this.exporter, tailSampler: sampling.tailSampler, postProcessor };
     const newState = this.action(localRootSpanId, { actionName: "startExport", args: exportArgs });
@@ -616,7 +618,8 @@ import {
   TraceFlags as TraceFlags2,
   SpanKind as SpanKind2,
   context as api_context,
-  trace as trace3
+  trace as trace3,
+  INVALID_SPAN_CONTEXT
 } from "@opentelemetry/api";
 import { sanitizeAttributes as sanitizeAttributes2 } from "@opentelemetry/core";
 import { RandomIdGenerator, SamplingDecision } from "@opentelemetry/sdk-trace-base";
@@ -807,7 +810,9 @@ var WorkerTracer = class {
     const spanKind = options.kind || SpanKind2.INTERNAL;
     const sanitisedAttrs = sanitizeAttributes2(options.attributes);
     const config = getActiveConfig();
-    if (!config) throw new Error("Config is undefined. This is a bug in the instrumentation logic");
+    if (!config) {
+      return trace3.wrapSpanContext(INVALID_SPAN_CONTEXT);
+    }
     const sampler = config.sampling.headSampler;
     const samplingDecision = sampler.shouldSample(context3, traceId, name, spanKind, sanitisedAttrs, []);
     const { decision, traceState, attributes: attrs } = samplingDecision;
@@ -2465,7 +2470,7 @@ function createScheduledHandler(scheduledFn, initialiser) {
 }
 
 // versions.json
-var _microlabs_otel_cf_workers = "1.0.0-fp.64";
+var _microlabs_otel_cf_workers = "1.0.0-fp.65";
 var node = "22.14.0";
 
 // src/instrumentation/email.ts

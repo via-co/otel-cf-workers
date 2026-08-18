@@ -1,5 +1,12 @@
 # @microlabs/otel-cf-workers
 
+## 1.0.0-fp.65
+
+### Patch Changes
+
+- e0eb37b: Do not throw error if config is not present. It now degrades to a non-recording span instead of throwing.
+- df52af0: Do not throw from `BatchTraceSpanProcessor.export` when no instrumentation config is active. It now drops the batch instead, matching the behaviour `WorkerTracer.startSpan` already had — `onEnd` is typically reached inside a `waitUntil` continuation, where throwing rejects the pending promise and can break a Durable Object's input gate.
+
 ## 1.0.0-fp.64
 
 ### Patch Changes
